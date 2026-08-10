@@ -33,6 +33,7 @@ from .const import (
     TERMINAL_STATUSES,
     WS_RETRY_MAX,
     WS_RETRY_MIN,
+    WS_STABLE_AFTER,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -41,10 +42,12 @@ _LOGGER = logging.getLogger(__name__)
 class DroneTowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Merges the REST snapshot with the STOMP push feed.
 
-    The nationwide broadcast carries roughly one event per second, so pushing every
-    one of them to entities would churn the recorder for no benefit. Entities are
-    updated as soon as the *nearby* set changes; the nationwide counter rides along
-    with those updates and with the periodic snapshot.
+    The nationwide broadcast carries roughly one event per second for the whole
+    country, so anything done per event is done 86 000 times a day. Each check-in
+    is therefore parsed and measured once, when it arrives, and an event only
+    touches the one record it names. Entities are updated when the *nearby* set
+    changes; the nationwide counter rides along with those updates and with the
+    periodic snapshot.
     """
 
     def __init__(
@@ -62,6 +65,11 @@ class DroneTowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.client = client
         self._checkins: dict[str, dict[str, Any]] = {}
+        # Derived once per check-in: its normalised payload (or None when out of
+        # range) and its parsed end time. Keeping these off the per-event path is
+        # what makes an event O(1) instead of O(all check-ins in Poland).
+        self._derived: dict[str, dict[str, Any] | None] = {}
+        self._expiry: dict[str, datetime | None] = {}
         self._nearby_ids: set[str] = set()
         self._stream_task: asyncio.Task[None] | None = None
         self._retry_delay = WS_RETRY_MIN
@@ -85,7 +93,13 @@ class DroneTowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except DroneTowerError as err:
             raise UpdateFailed(str(err)) from err
 
-        self._checkins = {c["id"]: c for c in checkins if c.get("id")}
+        self._checkins.clear()
+        self._derived.clear()
+        self._expiry.clear()
+        for checkin in checkins:
+            if checkin.get("id"):
+                self._store(checkin)
+
         return self._build()
 
     async def async_start_stream(self) -> None:
@@ -105,6 +119,7 @@ class DroneTowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _stream_loop(self) -> None:
         while True:
+            started = self.hass.loop.time()
             try:
                 await self.client.async_run_stream(
                     self._handle_event, self._handle_connected
@@ -121,23 +136,34 @@ class DroneTowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             except Exception:  # noqa: BLE001 - a background task must never die silently
                 _LOGGER.exception("Unexpected error in the DroneTower stream")
 
-            if self.stream_connected:
+            was_connected = self.stream_connected
+            if was_connected:
                 self.stream_connected = False
                 self.async_update_listeners()
 
-            await asyncio.sleep(self._retry_delay)
-            # Grows until a connection actually succeeds; _handle_connected resets it.
-            self._retry_delay = min(self._retry_delay * 2, WS_RETRY_MAX)
+            # Only a session that actually held up clears the backoff. Resetting on
+            # CONNECT alone would let a socket that drops immediately reconnect and
+            # resynchronise every few seconds, forever.
+            stable = self.hass.loop.time() - started >= WS_STABLE_AFTER
+            if stable:
+                self._retry_delay = WS_RETRY_MIN
 
-            # A dropped socket means missed events; resynchronise before listening again.
-            try:
-                await self.async_request_refresh()
-            except Exception:  # noqa: BLE001
-                _LOGGER.debug("Resync after stream loss failed, will retry")
+            await asyncio.sleep(self._retry_delay)
+
+            if not stable:
+                self._retry_delay = min(self._retry_delay * 2, WS_RETRY_MAX)
+
+            # A dropped socket means missed events, so resynchronise — but only if
+            # we had a working stream to lose. Retrying a connection that never
+            # succeeded says nothing new about the check-in list.
+            if was_connected:
+                try:
+                    await self.async_request_refresh()
+                except Exception:  # noqa: BLE001
+                    _LOGGER.debug("Resync after stream loss failed, will retry")
 
     @callback
     def _handle_connected(self) -> None:
-        self._retry_delay = WS_RETRY_MIN
         self.stream_connected = True
         self.async_update_listeners()
 
@@ -152,23 +178,31 @@ class DroneTowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             or str(checkin.get("status", "")).upper() in TERMINAL_STATUSES
         )
         if finished:
-            self._checkins.pop(checkin_id, None)
+            self._forget(checkin_id)
         else:
-            self._checkins[checkin_id] = checkin
+            self._store(checkin)
 
         data = self._build()
         if self.data is None or data["nearby"] != self.data.get("nearby"):
             self.async_set_updated_data(data)
 
+    def _store(self, checkin: dict[str, Any]) -> None:
+        """Record a check-in, doing the parsing and geodesy exactly once."""
+        checkin_id = checkin["id"]
+        self._checkins[checkin_id] = checkin
+        self._expiry[checkin_id] = _parse_time(checkin.get("endDateTime"))
+        self._derived[checkin_id] = self._evaluate(checkin)
+
+    def _forget(self, checkin_id: str) -> None:
+        self._checkins.pop(checkin_id, None)
+        self._derived.pop(checkin_id, None)
+        self._expiry.pop(checkin_id, None)
+
     def _build(self) -> dict[str, Any]:
-        """Recompute the derived state and emit enter/leave events."""
+        """Assemble the derived state from cached per-check-in results."""
         self._prune()
 
-        nearby = [
-            entry
-            for entry in (self._evaluate(c) for c in self._checkins.values())
-            if entry is not None
-        ]
+        nearby = [entry for entry in self._derived.values() if entry is not None]
         nearby.sort(key=lambda item: item["distance_to_area_m"])
 
         self._fire_transitions(nearby)
@@ -178,12 +212,19 @@ class DroneTowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return {"nearby": nearby, "total_active": len(self._checkins)}
 
     def _prune(self) -> None:
-        """Drop check-ins that can no longer describe a flight in progress."""
+        """Drop check-ins that can no longer describe a flight in progress.
+
+        Uses the end time parsed at store time, so this is a datetime comparison
+        per check-in rather than a re-parse.
+        """
         cutoff = dt_util.utcnow() - STALE_AFTER
-        for checkin_id, checkin in list(self._checkins.items()):
-            end = _parse_time(checkin.get("endDateTime"))
-            if end is not None and end < cutoff:
-                del self._checkins[checkin_id]
+        expired = [
+            checkin_id
+            for checkin_id, end in self._expiry.items()
+            if end is not None and end < cutoff
+        ]
+        for checkin_id in expired:
+            self._forget(checkin_id)
 
     def _evaluate(self, checkin: dict[str, Any]) -> dict[str, Any] | None:
         """Return a normalised entry if this check-in is close enough, else None."""
@@ -238,8 +279,10 @@ class DroneTowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _fire_transitions(self, nearby: list[dict[str, Any]]) -> None:
         current = {entry["id"] for entry in nearby}
-        by_id = {entry["id"]: entry for entry in nearby}
+        if current == self._nearby_ids:
+            return
 
+        by_id = {entry["id"]: entry for entry in nearby}
         for checkin_id in current - self._nearby_ids:
             self.hass.bus.async_fire(HA_EVENT_DETECTED, dict(by_id[checkin_id]))
         for checkin_id in self._nearby_ids - current:

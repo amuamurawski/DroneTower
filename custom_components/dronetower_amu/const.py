@@ -51,6 +51,11 @@ WS_HEARTBEAT_MS = 10000
 WS_RETRY_MIN = 5
 WS_RETRY_MAX = 300
 
+# A socket that connects and drops straight away must not reset the backoff, or a
+# flaky link turns into a reconnect-and-resync loop every few seconds. Only a
+# session that lasted this long counts as healthy.
+WS_STABLE_AFTER = 60
+
 HA_EVENT_DETECTED = f"{DOMAIN}_drone_detected"
 HA_EVENT_CLEARED = f"{DOMAIN}_drone_cleared"
 

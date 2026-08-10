@@ -3,6 +3,28 @@
 Format według [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/),
 wersjonowanie według [SemVer](https://semver.org/lang/pl/).
 
+## [1.0.3] — 2026-08-10
+
+### Naprawione
+
+- **Pętla ponownych połączeń mogła się kręcić bez końca.** Backoff był zerowany przy
+  każdym udanym CONNECT, więc gniazdo, które nawiązuje połączenie i natychmiast je
+  zrywa, powodowało w kółko: połącz → zerwij → odczekaj 5 s → **pełny pobór REST
+  (~140 kB, ~300 obiektów)** → połącz. Bez rosnącego odstępu i bez końca. Teraz
+  backoff zeruje wyłącznie sesja, która utrzymała się co najmniej 60 s, a
+  synchronizacja REST po zerwaniu następuje tylko wtedy, gdy strumień faktycznie
+  działał — nieudana próba połączenia nie wnosi nic nowego o liście zgłoszeń.
+
+### Zmienione
+
+- **Obsługa zdarzenia jest ~160x tańsza.** Krajowy broadcast to około jedno
+  zdarzenie na sekundę, a każde z nich powodowało wcześniej ponowne sparsowanie dat
+  i przeliczenie odległości geodezyjnej dla **wszystkich** zgłoszeń w Polsce.
+  Zmierzone 2,99 ms na zdarzenie, czyli ok. 258 s czasu CPU na dobę. Teraz każde
+  zgłoszenie jest parsowane i mierzone raz, przy nadejściu, a zdarzenie dotyka
+  wyłącznie rekordu, którego dotyczy: 0,018 ms i ok. 2 s CPU na dobę.
+  Pomiar odtworzysz przez `tools/bench_build.py`.
+
 ## [1.0.2] — 2026-08-10
 
 ### Naprawione
@@ -66,5 +88,6 @@ dostała taga ani release'u — pierwszym wydaniem oznaczonym tagiem jest 1.0.1.
 - Numery telefonów pilotów, obecne w odpowiedzi API, nie trafiają do żadnej encji
   ani zdarzenia. Pilnuje tego osobny test.
 
+[1.0.3]: https://github.com/amuamurawski/DroneTower/releases/tag/v1.0.3
 [1.0.2]: https://github.com/amuamurawski/DroneTower/releases/tag/v1.0.2
 [1.0.1]: https://github.com/amuamurawski/DroneTower/releases/tag/v1.0.1
