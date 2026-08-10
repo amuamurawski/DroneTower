@@ -23,7 +23,7 @@ class DroneTowerEntity(CoordinatorEntity[DroneTowerCoordinator]):
             identifiers={(DOMAIN, entry.entry_id)},
             name=entry.data.get(CONF_NAME, DEFAULT_NAME),
             manufacturer="PANSA",
-            model="DroneTower check-in feed",
+            model="Monitor zgłoszonych lotów",
             entry_type=DeviceEntryType.SERVICE,
             configuration_url="https://www.pansa.pl/strefy-geograficzne/",
         )

@@ -76,24 +76,42 @@ Wszystko można później zmienić przez **Opcje**, bez usuwania integracji.
 | `dronetower_amu_drone_detected` | pełne dane zgłoszenia, które właśnie weszło w zasięg |
 | `dronetower_amu_drone_cleared` | `id` zgłoszenia, które opuściło zasięg |
 
+Zapowiedź na głośniku, gdy pierwszy dron wejdzie w zasięg:
+
 ```yaml
 automation:
-  - alias: Powiadom o dronie nad domem
-    trigger:
-      - trigger: event
-        event_type: dronetower_amu_drone_detected
-    condition:
-      - condition: template
-        value_template: "{{ trigger.event.data.distance_to_area_m < 1000 }}"
-    action:
-      - action: notify.mobile_app
+  - alias: "Zapowiedź: dron w okolicy"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.drony_w_okolicy_dron_w_poblizu
+        from: "off"
+        to: "on"
+    conditions:
+      - condition: time
+        after: "07:00:00"
+        before: "22:00:00"
+    actions:
+      - action: tts.speak
+        target:
+          entity_id: tts.piper
         data:
-          title: Dron w okolicy
-          message: >
-            Zgłoszony lot {{ trigger.event.data.distance_to_area_m }} m stąd,
-            do {{ trigger.event.data.max_height_m }} m AGL,
-            do {{ as_timestamp(trigger.event.data.end) | timestamp_custom('%H:%M') }}.
+          media_player_entity_id: media_player.salon
+          cache: false
+          message: >-
+            {% set drony = state_attr('binary_sensor.drony_w_okolicy_dron_w_poblizu', 'drones') %}
+            {% set d = (drony or [])[0] | default(none) %}
+            {% if d %}
+              {% set m = d.distance_to_area_m %}
+              Uwaga. Zgłoszono lot drona
+              {{ 'mniej niż sto' if m < 100 else ((m / 100) | round | int) * 100 }}
+              metrów stąd, na wysokości do {{ d.max_height_m }} metrów.
+            {% endif %}
 ```
+
+Identyfikatory encji i silnika TTS podmień na swoje — jak je znaleźć oraz warianty
+(powiadomienie na telefon, zapowiedź per dron, podbicie głośności, karta na mapę)
+opisałem w [docs/automatyzacje.md](docs/automatyzacje.md).
 
 ## Jak to działa
 
