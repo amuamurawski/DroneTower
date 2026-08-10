@@ -1,0 +1,12 @@
+{
+  "domain": "dronetower_amu",
+  "name": "DroneTower-AMU",
+  "codeowners": ["@amurawski"],
+  "config_flow": true,
+  "documentation": "https://github.com/amurawski/pansa-dronetower-ha",
+  "integration_type": "service",
+  "iot_class": "cloud_push",
+  "issue_tracker": "https://github.com/amurawski/pansa-dronetower-ha/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}

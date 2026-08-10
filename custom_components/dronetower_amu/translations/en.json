@@ -1,0 +1,49 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Drone monitoring nearby",
+        "description": "Pick the point and radius where you want to know about registered drone flights. Data comes from the PANSA DroneTower system and needs no account.",
+        "data": {
+          "name": "Name",
+          "location": "Monitored area",
+          "include_planned": "Include registered flights that have not started yet",
+          "include_overdue": "Include overdue check-ins (usually left open by the pilot)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach the PANSA DroneTower backend."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Monitoring settings",
+        "data": {
+          "location": "Monitored area",
+          "include_planned": "Include registered flights that have not started yet",
+          "include_overdue": "Include overdue check-ins (usually left open by the pilot)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "drone_nearby": {
+        "name": "Drone nearby"
+      }
+    },
+    "sensor": {
+      "drones_in_range": {
+        "name": "Drones in range"
+      },
+      "nearest_drone": {
+        "name": "Nearest drone distance"
+      },
+      "total_active": {
+        "name": "Active check-ins in Poland"
+      }
+    }
+  }
+}

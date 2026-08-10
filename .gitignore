@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+# Analysis workspace. The APK is PANSA's to distribute, not ours, and everything
+# under work/ is reproducible from it — see docs/API.md section 10.
+*.xapk
+*.apk
+extracted_xapk/
+work/
+jadx_tool/
