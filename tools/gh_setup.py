@@ -17,7 +17,9 @@ from pathlib import Path
 
 OWNER = "amuamurawski"
 REPO = "DroneTower"
-TAG = "v1.0.1"
+TAG = "v" + json.loads(
+    Path("custom_components/dronetower_amu/manifest.json").read_text()
+)["version"]
 
 DESCRIPTION = (
     "Integracja Home Assistant pokazująca zgłoszone loty dronów w okolicy "
