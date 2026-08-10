@@ -29,12 +29,16 @@ def draw_mark(size: int) -> Image.Image:
     draw = ImageDraw.Draw(image)
     c = size / 2
 
+    # home-assistant/brands rejects images with transparent padding, so the outer
+    # ring has to reach the canvas edge. Every other proportion is scaled to match.
+    K = 1 / 0.94
+
     def ring(radius_frac: float, width_frac: float, colour: tuple[int, ...]) -> None:
-        r = size * radius_frac
+        r = min(size * radius_frac * K, c)
         draw.ellipse(
-            [c - r, c - r, c + r, c + r],
+            [c - r, c - r, min(c + r, size - 1), min(c + r, size - 1)],
             outline=colour,
-            width=max(1, round(size * width_frac)),
+            width=max(1, round(size * width_frac * K)),
         )
 
     # Monitored area: an outer boundary and an inner one for depth.
@@ -42,10 +46,10 @@ def draw_mark(size: int) -> Image.Image:
     ring(0.355, 0.030, BLUE)
 
     # Quadcopter, top view: four rotors on the diagonals joined by arms.
-    arm_len = size * 0.185
-    rotor_r = size * 0.088
-    arm_w = round(size * 0.048)
-    body_r = size * 0.072
+    arm_len = size * 0.185 * K
+    rotor_r = size * 0.088 * K
+    arm_w = round(size * 0.048 * K)
+    body_r = size * 0.072 * K
 
     angles = [math.radians(a) for a in (45, 135, 225, 315)]
     offsets = [(math.cos(a) * arm_len, math.sin(a) * arm_len) for a in angles]
