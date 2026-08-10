@@ -1,8 +1,8 @@
 # DroneTower-AMU dla Home Assistanta
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/)
-[![Validate](https://github.com/amurawski/pansa-dronetower-ha/actions/workflows/validate.yml/badge.svg)](https://github.com/amurawski/pansa-dronetower-ha/actions/workflows/validate.yml)
-[![Tests](https://github.com/amurawski/pansa-dronetower-ha/actions/workflows/tests.yml/badge.svg)](https://github.com/amurawski/pansa-dronetower-ha/actions/workflows/tests.yml)
+[![Validate](https://github.com/amuamurawski/DroneTower/actions/workflows/validate.yml/badge.svg)](https://github.com/amuamurawski/DroneTower/actions/workflows/validate.yml)
+[![Tests](https://github.com/amuamurawski/DroneTower/actions/workflows/tests.yml/badge.svg)](https://github.com/amuamurawski/DroneTower/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Integracja pokazująca **zgłoszone loty dronów** wokół wskazanego punktu, na podstawie
@@ -46,7 +46,7 @@ Atrybuty `binary_sensor` zawierają listę `drones` ze szczegółami każdego zg
 Repozytorium nie jest w domyślnym katalogu HACS, więc dodaj je jako własne źródło:
 
 1. **HACS → Integracje → menu (⋮) → Własne repozytoria**
-2. URL: `https://github.com/amurawski/pansa-dronetower-ha`, kategoria: **Integration**
+2. URL: `https://github.com/amuamurawski/DroneTower`, kategoria: **Integration**
 3. Znajdź **DroneTower-AMU** na liście, zainstaluj i **zrestartuj Home Assistanta**
 4. **Ustawienia → Urządzenia i usługi → Dodaj integrację → DroneTower-AMU**
 
