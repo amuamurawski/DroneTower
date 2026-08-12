@@ -213,8 +213,12 @@ Kilka rzeczy, o których warto wiedzieć, zanim to postawisz na stałe:
   kontaktu z PANSA.
 - **Dane osobowe.** `pilotPhoneNumber` to numer telefonu konkretnej osoby.
   Publikacja za zgodą pilota dotyczy kontaktu w sprawach ruchu lotniczego, a nie
-  dowolnego dalszego przetwarzania. Integracja w tym repo domyślnie **nie zapisuje
-  i nie wystawia numerów telefonu** — zostaw to tak.
+  dowolnego dalszego przetwarzania. Integracja w tym repo **domyślnie nie zapisuje
+  numerów**; zapis jest osobną opcją, a gdy jest włączony, numer nie trafia do
+  żadnej encji, atrybutu ani zdarzenia — leży raz na osobę w `.storage` i wychodzi
+  wyłącznie przez akcję `get_operator`. Rekordy lotów niosą tylko solony pseudonim.
+  Jeśli będziesz to zmieniać, zachowaj tę granicę: to ona sprawia, że numery nie
+  utrwalają się w bazie recordera.
 - **Rate limiting istnieje** — interceptor obsługuje HTTP 429. Snapshot REST co
   kilka minut plus WebSocket do zmian to wzorzec, który aplikacja sama stosuje;
   trzymaj się go i nie odpytuj REST-a w pętli.

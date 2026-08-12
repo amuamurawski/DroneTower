@@ -20,10 +20,17 @@
     "step": {
       "init": {
         "title": "Monitoring settings",
+        "description": "Flight history is stored locally. A pilot's phone number is published only with their consent — about a third of check-ins — and it is the only identifier linking two flights to the same person.",
         "data": {
           "location": "Monitored area",
           "include_planned": "Include registered flights that have not started yet",
-          "include_overdue": "Include overdue check-ins (usually left open by the pilot)"
+          "include_overdue": "Include overdue check-ins (usually left open by the pilot)",
+          "history_days": "Days of flight history to keep",
+          "store_phone_numbers": "Store pilots' phone numbers"
+        },
+        "data_description": {
+          "history_days": "Older records are deleted automatically.",
+          "store_phone_numbers": "Without this you can still count returning operators, but you will not see a number. The number never reaches an entity or an event — it leaves only through the \"Show operator\" action. Turning this off deletes numbers already collected."
         }
       }
     }
@@ -43,7 +50,57 @@
       },
       "total_active": {
         "name": "Active check-ins in Poland"
+      },
+      "returning_operators": {
+        "name": "Returning operators"
+      },
+      "recent_flights": {
+        "name": "Flights in the last 30 days"
       }
+    }
+  },
+  "services": {
+    "get_history": {
+      "name": "Show flight history",
+      "description": "Returns recorded flights near the monitored point. The response never contains a phone number.",
+      "fields": {
+        "days": { "name": "Days back", "description": "Omit for everything." },
+        "limit": { "name": "Result limit", "description": "Maximum number of flights returned." },
+        "operator": { "name": "Operator", "description": "Operator key, to narrow down to their flights." },
+        "only_returning": { "name": "Returning only", "description": "Skips operators seen only once." },
+        "config_entry_id": { "name": "Location", "description": "Omit to search every monitored location." }
+      }
+    },
+    "get_operators": {
+      "name": "Show operators",
+      "description": "Operator summary: flight count, first and last seen, closest approach. No phone numbers.",
+      "fields": {
+        "days": { "name": "Days back", "description": "Omit for everything." },
+        "min_flights": { "name": "Minimum flights", "description": "Set to 2 to list returning operators only." },
+        "config_entry_id": { "name": "Location", "description": "Omit to search every monitored location." }
+      }
+    },
+    "get_operator": {
+      "name": "Show operator",
+      "description": "The only action that returns a pilot's phone number. Requires phone storage to be enabled.",
+      "fields": {
+        "operator": { "name": "Operator", "description": "Key from the history or from the returning-operator event." },
+        "config_entry_id": { "name": "Location", "description": "Omit to search every monitored location." }
+      }
+    },
+    "purge_history": {
+      "name": "Purge history",
+      "description": "Deletes recorded flights. With no arguments, deletes everything.",
+      "fields": {
+        "older_than_days": { "name": "Older than (days)", "description": "Keeps records from the last N days." },
+        "operator": { "name": "Operator", "description": "Deletes one operator together with their flights and number." },
+        "config_entry_id": { "name": "Location", "description": "Omit to purge every monitored location." }
+      }
+    }
+  },
+  "exceptions": {
+    "unknown_operator": {
+      "message": "Operator {operator} was not found in the history."
     }
   }
 }

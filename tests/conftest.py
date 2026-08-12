@@ -25,6 +25,9 @@ def auto_enable_custom_integrations(enable_custom_integrations):
     yield
 
 
+PHONE = "123456789"
+
+
 def make_checkin(
     checkin_id: str = "abc",
     latitude: float = 52.005,
@@ -32,13 +35,15 @@ def make_checkin(
     radius: float | None = 100.0,
     status: str = "ACTIVE",
     max_height: int = 120,
+    phone: str | None = PHONE,
+    consent: bool = True,
 ) -> dict:
     """Build a check-in shaped exactly like the real API returns."""
     return {
         "id": checkin_id,
         "status": status,
-        "pilotPhoneNumber": {"countryCode": "PL", "number": "123456789"},
-        "phoneNumberPublicationConsent": True,
+        "pilotPhoneNumber": {"countryCode": "PL", "number": phone or ""},
+        "phoneNumberPublicationConsent": consent,
         "startDateTime": "2026-08-10T16:21:45.061Z",
         "endDateTime": "2099-08-10T16:51:45.061Z",
         "flightArea": {

@@ -15,6 +15,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util.location import distance as geo_distance
 
 from .api import DroneTowerClient, DroneTowerError
+from .history import FlightHistory
 from .const import (
     CONF_INCLUDE_OVERDUE,
     CONF_INCLUDE_PLANNED,
@@ -26,6 +27,7 @@ from .const import (
     EVENT_CHECKIN_FINISHED,
     HA_EVENT_CLEARED,
     HA_EVENT_DETECTED,
+    HA_EVENT_KNOWN_OPERATOR,
     RESYNC_INTERVAL,
     STALE_AFTER,
     STATUS_CREATED,
@@ -74,6 +76,9 @@ class DroneTowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._stream_task: asyncio.Task[None] | None = None
         self._retry_delay = WS_RETRY_MIN
         self.stream_connected = False
+        # Injected after construction: persistence is not the coordinator's job, it
+        # only knows who to hand an arrival to.
+        self.history: FlightHistory | None = None
 
     @property
     def latitude(self) -> float:
@@ -284,11 +289,47 @@ class DroneTowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         by_id = {entry["id"]: entry for entry in nearby}
         for checkin_id in current - self._nearby_ids:
-            self.hass.bus.async_fire(HA_EVENT_DETECTED, dict(by_id[checkin_id]))
+            derived = by_id[checkin_id]
+            self.hass.bus.async_fire(HA_EVENT_DETECTED, dict(derived))
+            self._record_arrival(checkin_id, derived)
         for checkin_id in self._nearby_ids - current:
             self.hass.bus.async_fire(HA_EVENT_CLEARED, {"id": checkin_id})
 
         self._nearby_ids = current
+
+    def _record_arrival(self, checkin_id: str, derived: dict[str, Any]) -> None:
+        """Persist the arrival and announce an operator that has been here before.
+
+        Arrival, not departure, is the recording point: a check-in that simply
+        vanishes from a REST snapshot never passes through `_forget`, so departure
+        would silently lose flights.
+        """
+        if self.history is None:
+            return
+
+        raw = self._checkins.get(checkin_id)
+        if raw is None:
+            return
+
+        announce = self.history.async_record(raw, derived)
+        if announce is None:
+            return
+
+        # Carries the pseudonymous key, never the phone number: events reach the
+        # bus, the logs and anything listening. An automation that needs to call
+        # someone fetches the number with the get_operator action.
+        self.hass.bus.async_fire(
+            HA_EVENT_KNOWN_OPERATOR,
+            {
+                "id": checkin_id,
+                "operator": announce["operator"],
+                "previous_flights": announce["previous_flights"],
+                "previously_seen": announce["last_seen"],
+                "previously_closest_m": announce["closest_m"],
+                "distance_to_area_m": derived["distance_to_area_m"],
+                "max_height_m": derived["max_height_m"],
+            },
+        )
 
 
 def _parse_time(value: Any) -> datetime | None:

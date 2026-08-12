@@ -3,6 +3,37 @@
 Format według [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/),
 wersjonowanie według [SemVer](https://semver.org/lang/pl/).
 
+## [1.1.0] — 2026-08-12
+
+### Dodane
+
+- **Lokalna historia przelotów.** Każdy lot, który wszedł w monitorowany obszar,
+  zapisuje się w `.storage` (osobno od bazy recordera, więc przeżywa jej czyszczenie):
+  czas, najbliższe zbliżenie, pułap, okno czasowe. Retencja 365 dni, do zmiany
+  w Opcjach. Rekordy lotów są **wolne od danych osobowych z samej konstrukcji** —
+  niosą wyłącznie solony pseudonim operatora.
+- **Rozpoznawanie powracających operatorów** i zdarzenie
+  `dronetower_amu_known_operator` przy drugim i kolejnym locie tej samej osoby.
+  Uwaga na ograniczenie źródła: numer telefonu jest jedynym identyfikatorem
+  łączącym loty tej samej osoby, a publikuje go tylko około jednej trzeciej
+  zgłoszeń — licznik powracających jest dolnym oszacowaniem.
+- **Cztery akcje**: `get_history`, `get_operators`, `get_operator`, `purge_history`.
+  Numer telefonu zwraca **wyłącznie** `get_operator` — przeglądanie historii nigdy
+  go nie ujawnia, bo odpowiedź akcji łatwo wpada do sensora szablonowego, a stamtąd
+  do bazy recordera.
+- Dwa sensory: **Powracający operatorzy** oraz diagnostyczny **Przeloty w ostatnich
+  30 dniach**. Bez atrybutów listowych, żeby nie obciążać recordera.
+- Opcja **Zapisuj numery telefonów pilotów**, domyślnie wyłączona. Jej wyłączenie
+  kasuje numery zebrane wcześniej.
+- `diagnostics.py` — same liczniki, z redakcją współrzędnych domu i soli.
+
+### Naprawione
+
+- Historia mogła zginąć przy zmianie opcji. Przeładowanie wpisu tworzy nowy `Store`,
+  który nie wie o opóźnionym zapisie poprzedniej instancji, więc dane czekające na
+  zapis czytało się z powrotem jako nieaktualne. Wpis zapisuje się teraz twardo
+  przed wyładowaniem.
+
 ## [1.0.3] — 2026-08-10
 
 ### Naprawione
@@ -88,6 +119,7 @@ dostała taga ani release'u — pierwszym wydaniem oznaczonym tagiem jest 1.0.1.
 - Numery telefonów pilotów, obecne w odpowiedzi API, nie trafiają do żadnej encji
   ani zdarzenia. Pilnuje tego osobny test.
 
+[1.1.0]: https://github.com/amuamurawski/DroneTower/releases/tag/v1.1.0
 [1.0.3]: https://github.com/amuamurawski/DroneTower/releases/tag/v1.0.3
 [1.0.2]: https://github.com/amuamurawski/DroneTower/releases/tag/v1.0.2
 [1.0.1]: https://github.com/amuamurawski/DroneTower/releases/tag/v1.0.1

@@ -152,6 +152,60 @@ Przydatne, jeśli głośnik zwykle stoi cicho.
 `tts.speak` wraca od razu po rozpoczęciu odtwarzania, a nie po jego zakończeniu —
 stąd `delay` przed przywróceniem głośności. Dobierz go do długości komunikatu.
 
+## Powracający operator — z numerem do oddzwonienia
+
+Zdarzenie `dronetower_amu_known_operator` leci, gdy w zasięgu pojawia się operator
+widziany już wcześniej. Niesie pseudonim, nie numer — numer dobiera się osobną akcją
+w tym samym skrypcie, dzięki czemu nigdzie się nie utrwala.
+
+```yaml
+automation:
+  - alias: "Dron: znowu ten sam operator"
+    id: dronetower_powracajacy
+    mode: queued
+    triggers:
+      - trigger: event
+        event_type: dronetower_amu_known_operator
+    actions:
+      - action: dronetower_amu.get_operator
+        data:
+          operator: "{{ trigger.event.data.operator }}"
+        response_variable: kto
+      - action: notify.mobile_app_telefon
+        data:
+          title: >-
+            Znany operator, lot nr {{ trigger.event.data.previous_flights + 1 }}
+          message: >-
+            {{ trigger.event.data.distance_to_area_m }} m stąd.
+            Poprzednio {{ (as_timestamp(now()) -
+              as_timestamp(trigger.event.data.previously_seen)) / 86400 }} dni temu,
+            najbliżej {{ trigger.event.data.previously_closest_m }} m.
+            {{ kto.phone if kto.phone else 'Pilot nie opublikował numeru.' }}
+```
+
+Trzy rzeczy, o których warto pamiętać przy tej automatyzacji. Numer pojawi się tylko
+przy włączonej opcji **Zapisuj numery telefonów pilotów** i tylko dla pilotów, którzy
+zgodzili się na publikację. `notify.mobile_app_*` wysyła powiadomienie i nie zostawia
+śladu w bazie — **nie zamieniaj go** na `persistent_notification.create` ani na sensor
+szablonowy, bo tamte utrwalają numer w maszynie stanów i w recorderze na stałe.
+A jeśli zdarzenie okaże się zbyt hałaśliwe, dołóż warunek na
+`trigger.event.data.previous_flights >= 2`.
+
+## Przegląd historii
+
+```yaml
+# Narzędzia deweloperskie → Akcje
+action: dronetower_amu.get_operators
+data:
+  days: 90
+  min_flights: 2
+```
+
+Zwraca operatorów, którzy w ostatnich 90 dniach byli tu co najmniej dwa razy —
+bez numerów. Numer konkretnej osoby pobierzesz przez `dronetower_amu.get_operator`
+z jej identyfikatorem, a `dronetower_amu.purge_history` z tym samym identyfikatorem
+usuwa ją z historii razem z lotami.
+
 ## Karta na pulpit
 
 ```yaml

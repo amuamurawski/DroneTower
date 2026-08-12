@@ -27,6 +27,8 @@ async def async_setup_entry(
             DronesInRangeSensor(coordinator),
             NearestDroneSensor(coordinator),
             TotalActiveSensor(coordinator),
+            ReturningOperatorsSensor(coordinator),
+            RecentFlightsSensor(coordinator),
         ]
     )
 
@@ -81,6 +83,54 @@ class NearestDroneSensor(DroneTowerEntity, SensorEntity):
             "start": closest["start"],
             "end": closest["end"],
         }
+
+
+class _HistorySensor(DroneTowerEntity, SensorEntity):
+    """Counter derived from the stored history.
+
+    Deliberately carries no attributes. Putting the flight or operator list here
+    would re-serialise a year of records into the recorder database on every state
+    change, for no benefit over calling the actions.
+
+    Both counters are a floor, not a truth: only about a third of check-ins publish
+    a phone number, and that number is the only thing linking two flights to the
+    same person.
+    """
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _index: int
+
+    @property
+    def native_value(self) -> int | None:
+        history = self.coordinator.history
+        if history is None:
+            return None
+        return history.async_counters()[self._index]
+
+
+class ReturningOperatorsSensor(_HistorySensor):
+    """Operators that have been here more than once."""
+
+    _attr_translation_key = "returning_operators"
+    _attr_icon = "mdi:account-repeat"
+    _attr_native_unit_of_measurement = "operatorzy"
+    _index = 1
+
+    def __init__(self, coordinator: DroneTowerCoordinator) -> None:
+        super().__init__(coordinator, "returning_operators")
+
+
+class RecentFlightsSensor(_HistorySensor):
+    """Flights recorded in the last 30 days."""
+
+    _attr_translation_key = "recent_flights"
+    _attr_icon = "mdi:history"
+    _attr_native_unit_of_measurement = "loty"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _index = 0
+
+    def __init__(self, coordinator: DroneTowerCoordinator) -> None:
+        super().__init__(coordinator, "recent_flights")
 
 
 class TotalActiveSensor(DroneTowerEntity, SensorEntity):

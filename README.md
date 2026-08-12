@@ -36,6 +36,8 @@ Oba źródła się uzupełniają: PANSA mówi „kto się zgłosił", Remote ID 
 | `sensor.…_drony_w_zasiegu` | liczba takich zgłoszeń |
 | `sensor.…_odleglosc_najblizszego_drona` | odległość do krawędzi najbliższej strefy lotu (m) |
 | `sensor.…_aktywne_zgloszenia_w_polsce` | licznik krajowy (diagnostyczny, domyślnie wyłączony) |
+| `sensor.…_powracajacy_operatorzy` | operatorzy, którzy byli tu więcej niż raz |
+| `sensor.…_przeloty_w_ostatnich_30_dniach` | licznik z historii (diagnostyczny) |
 | `geo_location.…` | znacznik na mapie HA dla każdego lotu w zasięgu |
 
 Atrybuty `binary_sensor` zawierają listę `drones` ze szczegółami każdego zgłoszenia
@@ -75,6 +77,7 @@ Wszystko można później zmienić przez **Opcje**, bez usuwania integracji.
 | --- | --- |
 | `dronetower_amu_drone_detected` | pełne dane zgłoszenia, które właśnie weszło w zasięg |
 | `dronetower_amu_drone_cleared` | `id` zgłoszenia, które opuściło zasięg |
+| `dronetower_amu_known_operator` | operator był tu już wcześniej: `operator`, `previous_flights`, `previously_seen` |
 
 Zapowiedź na głośniku, gdy pierwszy dron wejdzie w zasięg:
 
@@ -124,11 +127,60 @@ tylko wtedy, gdy zmieni się zbiór lotów w Twoim zasięgu — inaczej baza rec
 rosłaby bez powodu. Znaczniki na mapie celowo nie mają `unique_id`, żeby każdy
 przelatujący dron nie zostawiał po sobie wpisu w rejestrze encji.
 
+## Historia przelotów
+
+Integracja zapisuje lokalnie każdy lot, który wszedł w monitorowany obszar: kiedy,
+jak blisko, na jakiej wysokości, w jakim oknie czasowym. Domyślnie przez 365 dni,
+do zmiany w Opcjach. Dane leżą w pliku w `.storage`, niezależnie od bazy recordera,
+więc przeżywają jej czyszczenie.
+
+Do przeglądania służą akcje — wywołasz je w **Narzędzia deweloperskie → Akcje**:
+
+| Akcja | Do czego |
+| --- | --- |
+| `dronetower_amu.get_history` | lista przelotów, filtry `days`, `limit`, `only_returning` |
+| `dronetower_amu.get_operators` | podsumowanie operatorów: ile lotów, kiedy, jak blisko |
+| `dronetower_amu.get_operator` | **jedyna** akcja zwracająca numer telefonu |
+| `dronetower_amu.purge_history` | kasowanie: całości, starszych niż N dni albo jednego operatora |
+
+### Powracający operatorzy
+
+Numer telefonu pilota jest **jedynym** identyfikatorem łączącym dwa loty tej samej
+osoby — API nie zwraca ani numeru operatora, ani numeru pilota, a `id` jest unikalne
+dla każdego lotu. Dlatego rozpoznawanie powrotów działa tylko dla pilotów, którzy
+zgodzili się na publikację numeru, czyli mniej więcej **jednej trzeciej** zgłoszeń.
+Licznik powracających jest więc dolnym oszacowaniem, nie prawdą.
+
+Numer trzeba włączyć świadomie: **Opcje → Zapisuj numery telefonów pilotów**.
+Bez tego nadal policzysz powroty, ale nie zobaczysz, do kogo zadzwonić.
+
 ## Prywatność
 
 Odpowiedź API zawiera numer telefonu pilota, jeśli ten zgodził się na publikację.
-Integracja **celowo nie zapisuje ani nie wystawia numerów telefonu** w żadnej encji
-ani zdarzeniu — pilnuje tego osobny test. Jeśli będziesz modyfikować kod, zostaw to tak.
+Jeśli włączysz jego zapisywanie, obowiązuje jedna twarda zasada, pilnowana testami:
+
+**Numer nie pojawia się w żadnej encji, atrybucie ani zdarzeniu.** Rekordy lotów
+niosą wyłącznie nieodwracalny pseudonim operatora, liczony solonym skrótem. Numer
+leży raz na osobę w pliku `.storage` z zawężonymi prawami dostępu i wychodzi stamtąd
+tylko przez akcję `get_operator`. Dzięki temu nie trafia do bazy recordera i nie
+utrwala się w historii stanów.
+
+Trzy rzeczy warto wiedzieć, zanim to włączysz:
+
+- **Plik trafia do kopii zapasowych HA.** Katalog `.storage` nie jest z nich
+  wyłączony, w odróżnieniu od bazy recordera.
+- **Usunięcie integracji nie kasuje historii** — to celowe, żeby przetrwała ponowne
+  dodanie. Do skasowania służy `purge_history`, a `purge_history` z parametrem
+  `operator` usuwa jedną osobę wraz z jej lotami.
+- **Zgoda pilota dotyczyła kontaktu w sprawach ruchu lotniczego**, a nie budowania
+  rocznej historii. Wyjątek „działalność czysto osobista lub domowa" (art. 2 ust. 2
+  lit. c RODO) chroni użytek własny, ale przestaje działać z chwilą udostępnienia
+  tych danych komukolwiek. Do zgłaszania naruszeń właściwym kanałem jest PANSA
+  albo policja — one i tak mają te dane u źródła.
+
+Nie wstawiaj numeru do `persistent_notification` ani do sensora szablonowego:
+jedno i drugie ląduje w maszynie stanów i w bazie recordera na stałe, co przekreśla
+cały ten projekt. Do powiadomienia użyj `notify.mobile_app_*`.
 
 ## Rozwój
 
