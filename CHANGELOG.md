@@ -3,6 +3,21 @@
 Format według [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/),
 wersjonowanie według [SemVer](https://semver.org/lang/pl/).
 
+## [1.2.1] — 2026-08-26
+
+### Naprawione
+
+- **Sensor „Powracający operatorzy" nie miał ikony.** Użyłem nazwy
+  `mdi:account-repeat`, która nie istnieje w zestawie Material Design Icons —
+  a nieistniejąca nazwa nie daje błędu ani ikony zastępczej, tylko puste miejsce.
+  Zamieniona na `mdi:account-reactivate`.
+
+### Dodane
+
+- `tools/check_icons.py` — sprawdza wszystkie nazwy `mdi:` w kodzie wobec
+  oficjalnego indeksu MDI. Wymaga sieci, więc jest skryptem deweloperskim,
+  a nie zadaniem CI.
+
 ## [1.2.0] — 2026-08-12
 
 ### Dodane
@@ -146,6 +161,7 @@ dostała taga ani release'u — pierwszym wydaniem oznaczonym tagiem jest 1.0.1.
 - Numery telefonów pilotów, obecne w odpowiedzi API, nie trafiają do żadnej encji
   ani zdarzenia. Pilnuje tego osobny test.
 
+[1.2.1]: https://github.com/amuamurawski/DroneTower/releases/tag/v1.2.1
 [1.2.0]: https://github.com/amuamurawski/DroneTower/releases/tag/v1.2.0
 [1.1.0]: https://github.com/amuamurawski/DroneTower/releases/tag/v1.1.0
 [1.0.3]: https://github.com/amuamurawski/DroneTower/releases/tag/v1.0.3

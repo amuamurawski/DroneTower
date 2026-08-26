@@ -117,7 +117,7 @@ class ReturningOperatorsSensor(_HistorySensor):
     """Operators that have been here more than once."""
 
     _attr_translation_key = "returning_operators"
-    _attr_icon = "mdi:account-repeat"
+    _attr_icon = "mdi:account-reactivate"
     _attr_native_unit_of_measurement = "operatorzy"
     _index = 1
 
