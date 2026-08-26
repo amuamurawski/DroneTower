@@ -38,6 +38,7 @@ Oba źródła się uzupełniają: PANSA mówi „kto się zgłosił", Remote ID 
 | `sensor.…_aktywne_zgloszenia_w_polsce` | licznik krajowy (diagnostyczny, domyślnie wyłączony) |
 | `sensor.…_powracajacy_operatorzy` | operatorzy, którzy byli tu więcej niż raz |
 | `sensor.…_przeloty_w_ostatnich_30_dniach` | licznik z historii (diagnostyczny) |
+| `sensor.…_ostatni_przelot` | czas ostatniego przelotu; komplet danych w atrybutach |
 | `geo_location.…` | znacznik na mapie HA dla każdego lotu w zasięgu |
 
 Atrybuty `binary_sensor` zawierają listę `drones` ze szczegółami każdego zgłoszenia
@@ -159,14 +160,21 @@ Bez tego nadal policzysz powroty, ale nie zobaczysz, do kogo zadzwonić.
 Odpowiedź API zawiera numer telefonu pilota, jeśli ten zgodził się na publikację.
 Jeśli włączysz jego zapisywanie, obowiązuje jedna twarda zasada, pilnowana testami:
 
-**Numer nie pojawia się w żadnej encji, atrybucie ani zdarzeniu.** Rekordy lotów
-niosą wyłącznie nieodwracalny pseudonim operatora, liczony solonym skrótem. Numer
-leży raz na osobę w pliku `.storage` z zawężonymi prawami dostępu i wychodzi stamtąd
-tylko przez akcję `get_operator`. Dzięki temu nie trafia do bazy recordera i nie
-utrwala się w historii stanów.
+**Numer nie trafia do żadnego zdarzenia integracji** — `drone_detected`,
+`drone_cleared` i `known_operator` niosą wyłącznie nieodwracalny pseudonim
+operatora, liczony solonym skrótem. Tak samo rekordy lotów, podsumowania operatorów
+i akcja `get_history`.
 
-Trzy rzeczy warto wiedzieć, zanim to włączysz:
+Numer pojawia się dokładnie w trzech miejscach: w pliku `.storage` z zawężonymi
+prawami dostępu, w odpowiedzi akcji `get_operator` i — od 1.2.0 — **w atrybutach
+sensora „Ostatni przelot”**.
 
+To ostatnie miejsce ma konsekwencję, którą trzeba rozumieć przed włączeniem opcji:
+
+- **Atrybuty encji zapisują się do bazy recordera** przy każdej zmianie stanu i
+  zostają tam tak długo, jak recorder trzyma historię. Wyłączenie opcji kasuje
+  numery z historii integracji, ale **nie usuwa ich z bazy recordera** — tam
+  trzeba je wyczyścić osobno albo poczekać, aż wygaśnie retencja recordera.
 - **Plik trafia do kopii zapasowych HA.** Katalog `.storage` nie jest z nich
   wyłączony, w odróżnieniu od bazy recordera.
 - **Usunięcie integracji nie kasuje historii** — to celowe, żeby przetrwała ponowne

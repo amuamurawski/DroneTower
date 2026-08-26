@@ -214,11 +214,12 @@ Kilka rzeczy, o których warto wiedzieć, zanim to postawisz na stałe:
 - **Dane osobowe.** `pilotPhoneNumber` to numer telefonu konkretnej osoby.
   Publikacja za zgodą pilota dotyczy kontaktu w sprawach ruchu lotniczego, a nie
   dowolnego dalszego przetwarzania. Integracja w tym repo **domyślnie nie zapisuje
-  numerów**; zapis jest osobną opcją, a gdy jest włączony, numer nie trafia do
-  żadnej encji, atrybutu ani zdarzenia — leży raz na osobę w `.storage` i wychodzi
-  wyłącznie przez akcję `get_operator`. Rekordy lotów niosą tylko solony pseudonim.
-  Jeśli będziesz to zmieniać, zachowaj tę granicę: to ona sprawia, że numery nie
-  utrwalają się w bazie recordera.
+  numerów**; zapis jest osobną opcją. Gdy jest włączony, numer leży raz na osobę
+  w `.storage` i wychodzi przez akcję `get_operator` oraz przez atrybuty sensora
+  „Ostatni przelot”. Do zdarzeń integracji nie trafia nigdy, a rekordy lotów niosą
+  tylko solony pseudonim. Uwaga: atrybuty encji zapisują się do bazy recordera i
+  utrwalają się tam na czas jej retencji — to świadomy kompromis między wygodą
+  a minimalizacją danych.
 - **Rate limiting istnieje** — interceptor obsługuje HTTP 429. Snapshot REST co
   kilka minut plus WebSocket do zmian to wzorzec, który aplikacja sama stosuje;
   trzymaj się go i nie odpytuj REST-a w pętli.

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Any
+
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -10,6 +13,7 @@ from homeassistant.components.sensor import (
 from homeassistant.const import EntityCategory, UnitOfLength
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from . import DroneTowerConfigEntry
 from .coordinator import DroneTowerCoordinator
@@ -29,6 +33,7 @@ async def async_setup_entry(
             TotalActiveSensor(coordinator),
             ReturningOperatorsSensor(coordinator),
             RecentFlightsSensor(coordinator),
+            LastFlightSensor(coordinator),
         ]
     )
 
@@ -149,3 +154,68 @@ class TotalActiveSensor(DroneTowerEntity, SensorEntity):
     @property
     def native_value(self) -> int:
         return self.coordinator.data["total_active"]
+
+
+class LastFlightSensor(DroneTowerEntity, SensorEntity):
+    """The most recent flight that came into range, with everything known about it.
+
+    State is when it was last seen; the details sit in attributes. Note that
+    attributes are written to the recorder database on every state change and kept
+    for as long as the recorder keeps history — including the pilot's phone number
+    when phone storage is enabled.
+    """
+
+    _attr_translation_key = "last_flight"
+    _attr_icon = "mdi:map-marker-path"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, coordinator: DroneTowerCoordinator) -> None:
+        super().__init__(coordinator, "last_flight")
+
+    @property
+    def _flight(self) -> dict[str, Any] | None:
+        history = self.coordinator.history
+        return history.async_last_flight() if history is not None else None
+
+    @property
+    def native_value(self) -> datetime | None:
+        flight = self._flight
+        if flight is None:
+            return None
+        return dt_util.parse_datetime(flight["last_seen"])
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        flight = self._flight
+        if flight is None:
+            return {}
+
+        attributes = {
+            "checkin_id": flight["id"],
+            "first_seen": flight["first_seen"],
+            "passes": flight["passes"],
+            "distance_to_area_m": flight["closest_m"],
+            "distance_to_center_m": flight["closest_center_m"],
+            "latitude": flight["latitude"],
+            "longitude": flight["longitude"],
+            "area_radius_m": flight["radius_m"],
+            "max_height_m": flight["max_height_m"],
+            "status": flight["status"],
+            "checkin_type": flight["checkin_type"],
+            "origin": flight["origin"],
+            "start": flight["start"],
+            "end": flight["end"],
+            "operator": flight["operator"],
+            "operator_flights": flight["operator_flights"],
+            "operator_first_seen": flight["operator_first_seen"],
+            "operator_last_seen": flight["operator_last_seen"],
+            "operator_closest_m": flight["operator_closest_m"],
+            "returning": flight["returning"],
+        }
+
+        # Only present while phone storage is on; the pilot must also have consented
+        # to publication, which about a third of them do.
+        if flight["phone"] is not None:
+            attributes["phone"] = flight["phone"]
+
+        return attributes

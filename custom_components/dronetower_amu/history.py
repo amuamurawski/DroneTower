@@ -2,10 +2,11 @@
 
 **The pilot's phone number lives in this module and nowhere else.** Flight records
 are free of personal data by construction: they carry only an opaque `operator`
-token. The number sits once per operator in `_operators` and leaves the module
-through exactly one method, `async_operator`. Keep it that way — it is what makes
-the service responses, the sensors, the events and the diagnostics safe without a
-single line of redaction logic.
+token. The number sits once per operator in `_operators` and leaves this module
+through exactly two methods: `async_operator` and `async_last_flight`, and only
+while phone storage is switched on. Everything else — the flight list, the operator
+summaries, the counters — stays free of it, which is what keeps the events, the
+diagnostics and the browse-my-history action safe without any redaction logic.
 
 The store lives outside the coordinator because the coordinator is rebuilt on every
 options change and wiped on every REST resync, while the history must outlive both.
@@ -316,6 +317,39 @@ class FlightHistory:
             "number": number,
             "phone": f"{country} {number}".strip() if number else None,
         }
+
+    @callback
+    def async_last_flight(self) -> dict[str, Any] | None:
+        """The newest flight, enriched with what is known about its operator.
+
+        One of the two methods that can return a phone number, and only when phone
+        storage is on. It feeds the "last flight" sensor, so whatever it returns
+        lands in entity attributes and therefore in the recorder database.
+        """
+        flights = self.async_flights(limit=1)
+        if not flights:
+            return None
+
+        flight = flights[0]
+        operator = (
+            self.async_operator(flight["operator"]) if flight.get("operator") else None
+        )
+        if operator is None:
+            flight["operator_flights"] = None
+            flight["operator_first_seen"] = None
+            flight["operator_last_seen"] = None
+            flight["operator_closest_m"] = None
+            flight["returning"] = False
+            flight["phone"] = None
+            return flight
+
+        flight["operator_flights"] = operator["flights"]
+        flight["operator_first_seen"] = operator["first_seen"]
+        flight["operator_last_seen"] = operator["last_seen"]
+        flight["operator_closest_m"] = operator["closest_m"]
+        flight["returning"] = operator["flights"] > 1
+        flight["phone"] = operator["phone"]
+        return flight
 
     @callback
     def async_counters(self) -> tuple[int, int]:

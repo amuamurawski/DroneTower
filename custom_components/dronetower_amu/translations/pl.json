@@ -30,7 +30,7 @@
         },
         "data_description": {
           "history_days": "Starsze wpisy są kasowane automatycznie.",
-          "store_phone_numbers": "Bez tego nadal policzysz powracających operatorów, ale nie zobaczysz numeru. Numer nigdy nie trafia do encji ani do zdarzeń — wychodzi wyłącznie przez akcję „Pokaż operatora”. Wyłączenie tej opcji kasuje już zebrane numery."
+          "store_phone_numbers": "Bez tego nadal policzysz powracających operatorów, ale nie zobaczysz numeru. Włączenie sprawia, że numer trafia także do atrybutów sensora „Ostatni przelot”, a stamtąd do bazy recordera i do kopii zapasowych — trwale, bez łatwego cofnięcia. Do zdarzeń integracji numer nie trafia nigdy. Wyłączenie kasuje zebrane numery z historii integracji, ale nie usuwa ich z bazy recordera."
         }
       }
     }
@@ -56,6 +56,9 @@
       },
       "recent_flights": {
         "name": "Przeloty w ostatnich 30 dniach"
+      },
+      "last_flight": {
+        "name": "Ostatni przelot"
       }
     }
   },
@@ -64,37 +67,76 @@
       "name": "Pokaż historię przelotów",
       "description": "Zwraca zapisane przeloty w okolicy. Odpowiedź nigdy nie zawiera numeru telefonu.",
       "fields": {
-        "days": { "name": "Z ilu dni", "description": "Pomiń, żeby dostać całość." },
-        "limit": { "name": "Limit wyników", "description": "Maksymalna liczba zwróconych przelotów." },
-        "operator": { "name": "Operator", "description": "Identyfikator operatora, żeby zawęzić do jego lotów." },
-        "only_returning": { "name": "Tylko powracający", "description": "Pomija loty operatorów widzianych tylko raz." },
-        "config_entry_id": { "name": "Lokalizacja", "description": "Pomiń, żeby przeszukać wszystkie monitorowane lokalizacje." }
+        "days": {
+          "name": "Z ilu dni",
+          "description": "Pomiń, żeby dostać całość."
+        },
+        "limit": {
+          "name": "Limit wyników",
+          "description": "Maksymalna liczba zwróconych przelotów."
+        },
+        "operator": {
+          "name": "Operator",
+          "description": "Identyfikator operatora, żeby zawęzić do jego lotów."
+        },
+        "only_returning": {
+          "name": "Tylko powracający",
+          "description": "Pomija loty operatorów widzianych tylko raz."
+        },
+        "config_entry_id": {
+          "name": "Lokalizacja",
+          "description": "Pomiń, żeby przeszukać wszystkie monitorowane lokalizacje."
+        }
       }
     },
     "get_operators": {
       "name": "Pokaż operatorów",
       "description": "Podsumowanie operatorów: ile lotów, kiedy pierwszy i ostatni, jak blisko. Bez numerów telefonu.",
       "fields": {
-        "days": { "name": "Z ilu dni", "description": "Pomiń, żeby dostać całość." },
-        "min_flights": { "name": "Minimalna liczba lotów", "description": "Ustaw 2, żeby zobaczyć wyłącznie powracających." },
-        "config_entry_id": { "name": "Lokalizacja", "description": "Pomiń, żeby przeszukać wszystkie monitorowane lokalizacje." }
+        "days": {
+          "name": "Z ilu dni",
+          "description": "Pomiń, żeby dostać całość."
+        },
+        "min_flights": {
+          "name": "Minimalna liczba lotów",
+          "description": "Ustaw 2, żeby zobaczyć wyłącznie powracających."
+        },
+        "config_entry_id": {
+          "name": "Lokalizacja",
+          "description": "Pomiń, żeby przeszukać wszystkie monitorowane lokalizacje."
+        }
       }
     },
     "get_operator": {
       "name": "Pokaż operatora",
       "description": "Jedyna akcja zwracająca numer telefonu pilota. Wymaga włączonej opcji zapisu numerów.",
       "fields": {
-        "operator": { "name": "Operator", "description": "Identyfikator z historii albo ze zdarzenia o powrocie." },
-        "config_entry_id": { "name": "Lokalizacja", "description": "Pomiń, żeby przeszukać wszystkie monitorowane lokalizacje." }
+        "operator": {
+          "name": "Operator",
+          "description": "Identyfikator z historii albo ze zdarzenia o powrocie."
+        },
+        "config_entry_id": {
+          "name": "Lokalizacja",
+          "description": "Pomiń, żeby przeszukać wszystkie monitorowane lokalizacje."
+        }
       }
     },
     "purge_history": {
       "name": "Wyczyść historię",
       "description": "Kasuje zapisane przeloty. Bez żadnego parametru kasuje wszystko.",
       "fields": {
-        "older_than_days": { "name": "Starsze niż (dni)", "description": "Zostawia wpisy z ostatnich N dni." },
-        "operator": { "name": "Operator", "description": "Kasuje jednego operatora wraz z jego lotami i numerem." },
-        "config_entry_id": { "name": "Lokalizacja", "description": "Pomiń, żeby wyczyścić wszystkie monitorowane lokalizacje." }
+        "older_than_days": {
+          "name": "Starsze niż (dni)",
+          "description": "Zostawia wpisy z ostatnich N dni."
+        },
+        "operator": {
+          "name": "Operator",
+          "description": "Kasuje jednego operatora wraz z jego lotami i numerem."
+        },
+        "config_entry_id": {
+          "name": "Lokalizacja",
+          "description": "Pomiń, żeby wyczyścić wszystkie monitorowane lokalizacje."
+        }
       }
     }
   },

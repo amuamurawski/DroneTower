@@ -6,7 +6,7 @@ import hashlib
 from datetime import timedelta
 
 import pytest
-from homeassistant.core import MATCH_ALL, HomeAssistant
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.util import dt as dt_util
 
@@ -14,6 +14,8 @@ from custom_components.dronetower_amu.const import (
     CONF_HISTORY_DAYS,
     CONF_STORE_PHONE,
     DOMAIN,
+    HA_EVENT_CLEARED,
+    HA_EVENT_DETECTED,
     HA_EVENT_KNOWN_OPERATOR,
     SERVICE_GET_HISTORY,
     SERVICE_GET_OPERATOR,
@@ -28,6 +30,14 @@ from .test_init import setup_entry
 def arrive(hass: HomeAssistant, mock_client, **kwargs) -> None:
     """Push a check-in through the live path so it enters range."""
     mock_client.captured["on_event"]("CheckinEvent", make_checkin(**kwargs))
+
+
+def last_flight_entity(hass: HomeAssistant, entry) -> str:
+    from homeassistant.helpers import entity_registry as er
+
+    return er.async_get(hass).async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_last_flight"
+    )
 
 
 def depart(hass: HomeAssistant, mock_client, checkin_id: str) -> None:
@@ -276,24 +286,77 @@ async def test_known_operator_does_not_refire_for_the_same_flight(
     assert seen == []
 
 
-async def test_phone_never_reaches_states_or_the_event_bus(hass, mock_client):
-    """The guarantee, proven with phone storage ON and an operator recorded."""
+async def test_phone_never_reaches_the_integrations_own_events(hass, mock_client):
+    """Absolute, regardless of settings: our events carry the pseudonym, not the number.
+
+    State-change events do carry attributes, so this checks the three events the
+    integration fires itself — the ones automations subscribe to.
+    """
     entry = make_entry(**{CONF_STORE_PHONE: True})
-    events: list[str] = []
-    hass.bus.async_listen(MATCH_ALL, lambda e: events.append(str(e.data)))
+    payloads: list[str] = []
+    for event in (HA_EVENT_DETECTED, HA_EVENT_CLEARED, HA_EVENT_KNOWN_OPERATOR):
+        hass.bus.async_listen(event, lambda e: payloads.append(str(e.data)))
 
     await setup_entry(hass, entry)
     arrive(hass, mock_client, checkin_id="f1")
     await hass.async_block_till_done()
     arrive(hass, mock_client, checkin_id="f2", latitude=52.006)
     await hass.async_block_till_done()
+    depart(hass, mock_client, "f1")
+    await hass.async_block_till_done()
 
-    assert entry.runtime_data.history.async_operators()[0]["flights"] == 2
+    assert payloads, "zdarzenia w ogóle poleciały"
+    assert PHONE not in "".join(payloads)
+
+
+async def test_phone_absent_from_every_state_when_storage_is_off(
+    hass, config_entry, mock_client
+):
+    """The default install must never surface a number anywhere."""
+    await setup_entry(hass, config_entry)
+    arrive(hass, mock_client, checkin_id="f1")
+    await hass.async_block_till_done()
 
     states = str([state.as_dict() for state in hass.states.async_all()])
     assert PHONE not in states
     assert "phone" not in states.lower()
-    assert PHONE not in "".join(events)
+
+
+async def test_phone_appears_in_last_flight_attributes_when_storage_is_on(
+    hass, mock_client
+):
+    """Documents the deliberate trade-off: attributes reach the recorder database."""
+    entry = make_entry(**{CONF_STORE_PHONE: True})
+    await setup_entry(hass, entry)
+    arrive(hass, mock_client, checkin_id="f1")
+    await hass.async_block_till_done()
+
+    state = hass.states.get(last_flight_entity(hass, entry))
+    assert PHONE in state.attributes["phone"]
+    assert state.attributes["checkin_id"] == "f1"
+    assert state.attributes["returning"] is False
+    assert state.attributes["operator"] is not None
+
+    # Only this one entity carries it; the others stay clean.
+    others = [
+        s.as_dict()
+        for s in hass.states.async_all()
+        if s.entity_id != last_flight_entity(hass, entry)
+    ]
+    assert PHONE not in str(others)
+
+
+async def test_last_flight_tracks_the_newest_arrival(hass, config_entry, mock_client):
+    await setup_entry(hass, config_entry)
+    arrive(hass, mock_client, checkin_id="f1")
+    await hass.async_block_till_done()
+    arrive(hass, mock_client, checkin_id="f2", latitude=52.006)
+    await hass.async_block_till_done()
+
+    state = hass.states.get(last_flight_entity(hass, config_entry))
+    assert state.attributes["checkin_id"] == "f2"
+    assert state.attributes["returning"] is True, "ten sam numer, drugi lot"
+    assert state.attributes["operator_flights"] == 2
 
 
 async def test_services_expose_the_number_only_through_get_operator(

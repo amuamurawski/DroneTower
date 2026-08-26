@@ -3,6 +3,33 @@
 Format według [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/),
 wersjonowanie według [SemVer](https://semver.org/lang/pl/).
 
+## [1.2.0] — 2026-08-12
+
+### Dodane
+
+- **Sensor „Ostatni przelot”.** Stan to czas ostatniego przelotu, a atrybuty niosą
+  komplet: identyfikator zgłoszenia, odległość najbliższego zbliżenia i do środka
+  strefy, współrzędne, promień strefy, pułap, okno czasowe, status, typ i kanał
+  zgłoszenia, liczbę wejść w zasięg oraz dane operatora — pseudonim, liczba jego
+  lotów, kiedy był poprzednio, jak blisko i czy to powrót.
+
+### Zmienione
+
+- **Numer telefonu trafia teraz także do atrybutów tego sensora**, gdy włączony jest
+  zapis numerów. To świadoma zmiana granicy z 1.1.0, gdzie numer wychodził wyłącznie
+  przez akcję `get_operator`.
+
+  **Jeśli miałeś już włączony zapis numerów, przeczytaj to przed aktualizacją.**
+  Atrybuty encji zapisują się do bazy recordera przy każdej zmianie stanu i zostają
+  tam na czas jej retencji, trafiają też do kopii zapasowych. Wyłączenie opcji kasuje
+  numery z historii integracji, ale **nie usuwa ich z bazy recordera** — tam trzeba
+  je wyczyścić osobno. Jeśli nie chcesz tego efektu, wyłącz opcję *przed*
+  aktualizacją.
+
+  Co zostaje bez zmian: numer nadal **nie trafia do żadnego zdarzenia integracji**
+  (`drone_detected`, `drone_cleared`, `known_operator` niosą tylko solony pseudonim),
+  ani do rekordów lotów, podsumowań operatorów czy akcji `get_history`.
+
 ## [1.1.0] — 2026-08-12
 
 ### Dodane
@@ -119,6 +146,7 @@ dostała taga ani release'u — pierwszym wydaniem oznaczonym tagiem jest 1.0.1.
 - Numery telefonów pilotów, obecne w odpowiedzi API, nie trafiają do żadnej encji
   ani zdarzenia. Pilnuje tego osobny test.
 
+[1.2.0]: https://github.com/amuamurawski/DroneTower/releases/tag/v1.2.0
 [1.1.0]: https://github.com/amuamurawski/DroneTower/releases/tag/v1.1.0
 [1.0.3]: https://github.com/amuamurawski/DroneTower/releases/tag/v1.0.3
 [1.0.2]: https://github.com/amuamurawski/DroneTower/releases/tag/v1.0.2
