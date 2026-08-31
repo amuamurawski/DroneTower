@@ -1,12 +1,14 @@
 {
   "domain": "dronetower_amu",
   "name": "DroneTower-AMU",
+  "after_dependencies": ["frontend"],
   "codeowners": ["@amuamurawski"],
   "config_flow": true,
+  "dependencies": ["http"],
   "documentation": "https://github.com/amuamurawski/DroneTower",
   "integration_type": "service",
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/amuamurawski/DroneTower/issues",
   "requirements": ["curl_cffi==0.16.2"],
-  "version": "1.7.0"
+  "version": "1.7.1"
 }
