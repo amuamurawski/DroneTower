@@ -1,3 +1,7 @@
 # Pulls in the matching Home Assistant core, so this pin also pins the HA version
 # the tests run against.
 pytest-homeassistant-custom-component==0.13.316
+
+# Runtime requirement (also declared in manifest.json) — imported by api.py, so the
+# test environment needs it too.
+curl_cffi==0.16.2
