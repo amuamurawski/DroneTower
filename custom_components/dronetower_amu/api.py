@@ -137,10 +137,11 @@ class DroneTowerClient:
         """Run one Keycloak token exchange and store the result."""
         async with self._login_lock:
             try:
+                # A dict body makes aiohttp send application/x-www-form-urlencoded and
+                # set that header itself; do not set it by hand as well.
                 async with self._session.post(
                     KEYCLOAK_TOKEN_ENDPOINT,
                     data=data,
-                    headers={"content-type": "application/x-www-form-urlencoded"},
                     timeout=aiohttp.ClientTimeout(total=30),
                 ) as response:
                     # Keycloak answers a bad password or a dead refresh token with an

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import voluptuous as vol
@@ -40,6 +41,8 @@ from .const import (
     DOMAIN,
 )
 
+_LOGGER = logging.getLogger(__name__)
+
 _EMAIL_SELECTOR = selector.TextSelector(
     selector.TextSelectorConfig(type=selector.TextSelectorType.EMAIL)
 )
@@ -61,9 +64,13 @@ async def _async_validate_credentials(hass, email: str, password: str) -> str | 
     client = DroneTowerClient(async_get_clientsession(hass), email, password)
     try:
         await client.async_login()
-    except DroneTowerAuthError:
+    except DroneTowerAuthError as err:
+        _LOGGER.debug("DroneTower rejected the credentials: %s", err)
         return "invalid_auth"
-    except DroneTowerError:
+    except DroneTowerError as err:
+        # Not an auth failure — surface the real reason, since the form only shows a
+        # generic "cannot connect".
+        _LOGGER.warning("DroneTower login could not reach the backend: %s", err)
         return "cannot_connect"
     return None
 
