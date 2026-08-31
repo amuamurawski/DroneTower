@@ -1,0 +1,24 @@
+blueprint:
+  name: "DroneTower — powiadom, gdy dron opuści okolicę"
+  description: >
+    Uruchamia wybraną akcję, gdy zgłoszony lot przestaje być w monitorowanym obszarze
+    (zdarzenie drone_cleared). Przydatne do domknięcia scen uruchomionych przy wykryciu.
+
+
+    Dostępna zmienna w akcjach: drone_id.
+  domain: automation
+  source_url: https://github.com/amuamurawski/DroneTower/blob/main/custom_components/dronetower_amu/blueprints/automation/dronetower_amu/notify_drone_cleared.yaml
+  input:
+    actions:
+      name: Akcje
+      description: Co zrobić, gdy dron zniknie z okolicy.
+      selector:
+        action: {}
+variables:
+  drone_id: "{{ trigger.event.data.id }}"
+trigger:
+  - platform: event
+    event_type: dronetower_amu_drone_cleared
+action: !input actions
+mode: parallel
+max: 25

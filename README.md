@@ -42,7 +42,9 @@ Oba źródła się uzupełniają: PANSA mówi „kto się zgłosił", Remote ID 
 | `geo_location.…` | znacznik na mapie HA dla każdego lotu w zasięgu |
 
 Atrybuty `binary_sensor` zawierają listę `drones` ze szczegółami każdego zgłoszenia
-(status, odległość, promień strefy, pułap, okno czasowe).
+(status, odległość, promień strefy, pułap, okno czasowe) oraz monitorowany punkt i
+promień (`monitored_latitude`, `monitored_longitude`, `radius_m`) — z tego korzysta
+[karta mapy](#karta-mapy-dronów).
 
 ## Instalacja przez HACS
 
@@ -71,6 +73,26 @@ oraz decydujesz, czy liczyć:
   zgłoszenia, których pilot zapomniał zamknąć (w badanej próbce 48 z 315).
 
 Wszystko można później zmienić przez **Opcje**, bez usuwania integracji.
+
+## Karta mapy dronów
+
+Integracja dostarcza własną kartę Lovelace **`dronetower-map-card`** — mapę Leaflet na
+żywo z monitorowanym obszarem (okrąg promienia), strefami zgłoszonych lotów i
+znacznikami dronów. Kliknięcie drona pokazuje szczegóły: status, pułap, odległość do
+obszaru, promień strefy i okno czasowe. Karta rejestruje się automatycznie przy
+starcie integracji (Leaflet jest dołączony lokalnie, bez CDN), więc zwykle wystarczy
+dodać ją do panelu:
+
+```yaml
+type: custom:dronetower-map-card
+title: Drony w okolicy   # opcjonalne
+height: 400              # opcjonalne, wysokość w px
+```
+
+Bez konfiguracji karta sama znajduje monitorowane obszary integracji. Gdyby po
+instalacji nie doładowała się automatycznie, dodaj zasób ręcznie w **Ustawienia →
+Dashboardy → Zasoby**: URL `/dronetower_amu_static/dronetower-map-card.js`, typ
+**Moduł JavaScript** (i odśwież przeglądarkę Ctrl+Shift+R).
 
 ## Zdarzenia do automatyzacji
 
@@ -116,6 +138,16 @@ automation:
 Identyfikatory encji i silnika TTS podmień na swoje — jak je znaleźć oraz warianty
 (powiadomienie na telefon, zapowiedź per dron, podbicie głośności, karta na mapę)
 opisałem w [docs/automatyzacje.md](docs/automatyzacje.md).
+
+### Blueprinty
+
+Integracja dołącza gotowe blueprinty automatyzacji (klikasz akcję, resztę uzupełnia
+kreator) — znajdziesz je w **Ustawienia → Automatyzacje i sceny → Blueprinty**:
+
+- **Powiadom o dronie w okolicy** — na zdarzenie wejścia w zasięg, z opcjonalnym
+  filtrem odległości i pułapu.
+- **Powiadom o powracającym operatorze** — gdy pojawi się ktoś, kto już tu latał.
+- **Powiadom, gdy dron opuści okolicę** — do domykania scen.
 
 ## Jak to działa
 

@@ -1,0 +1,44 @@
+blueprint:
+  name: "DroneTower — powiadom o powracającym operatorze"
+  description: >
+    Uruchamia wybraną akcję, gdy w okolicy pojawi się operator, który już wcześniej
+    tu latał (zdarzenie known_operator). Wymaga włączonej lokalnej historii przelotów.
+
+
+    Dostępne zmienne w akcjach: operator, previous_flights, previously_seen,
+    previously_closest_m, distance_m, height_m.
+  domain: automation
+  source_url: https://github.com/amuamurawski/DroneTower/blob/main/custom_components/dronetower_amu/blueprints/automation/dronetower_amu/notify_returning_operator.yaml
+  input:
+    min_previous_flights:
+      name: Minimalna liczba wcześniejszych lotów
+      description: Powiadom dopiero, gdy operator był tu już co najmniej tyle razy.
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          mode: box
+    actions:
+      name: Akcje
+      description: Co zrobić (np. wyślij powiadomienie).
+      selector:
+        action: {}
+variables:
+  min_previous_flights: !input min_previous_flights
+  operator: "{{ trigger.event.data.operator }}"
+  previous_flights: "{{ trigger.event.data.previous_flights }}"
+  previously_seen: "{{ trigger.event.data.previously_seen }}"
+  previously_closest_m: "{{ trigger.event.data.previously_closest_m }}"
+  distance_m: "{{ trigger.event.data.distance_to_area_m }}"
+  height_m: "{{ trigger.event.data.max_height_m }}"
+trigger:
+  - platform: event
+    event_type: dronetower_amu_known_operator
+condition:
+  - condition: template
+    value_template: "{{ (previous_flights | int(0)) >= (min_previous_flights | int(1)) }}"
+action: !input actions
+mode: parallel
+max: 25
