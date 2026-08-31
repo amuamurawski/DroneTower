@@ -47,7 +47,27 @@ class DroneTowerSurveillanceCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    // Re-render only when our data changed, not on every unrelated state update.
+    const sig = this._signature();
+    if (sig === this._sig) return;
+    this._sig = sig;
     this._render();
+  }
+
+  _signature() {
+    const hass = this._hass;
+    if (!hass) return "";
+    const wanted = this._config?.entity ? [this._config.entity] : null;
+    let sig = "";
+    for (const [id, st] of Object.entries(hass.states)) {
+      if (!id.startsWith("binary_sensor.")) continue;
+      const a = st.attributes || {};
+      if (a.monitored_latitude == null || !Array.isArray(a.drones)) continue;
+      if (wanted && !wanted.includes(id)) continue;
+      sig += `${id}:${a.total_active_in_poland}:${a.stream_connected};`;
+      for (const d of a.drones) sig += `${d.id}#${d.status}/${d.distance_to_area_m}/${d.max_height_m};`;
+    }
+    return sig;
   }
 
   getCardSize() {
@@ -156,4 +176,5 @@ window.customCards.push({
   name: "DroneTower — lista dronów",
   description: "Lista zgłoszonych lotów w okolicy z kafelkami statystyk.",
   preview: false,
+  documentationURL: "https://github.com/amuamurawski/DroneTower#karta-mapy-dronów",
 });

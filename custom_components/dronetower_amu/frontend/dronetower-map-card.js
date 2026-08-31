@@ -64,7 +64,29 @@ class DroneTowerMapCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    // HA calls this on every state change anywhere; only re-render when *our* data
+    // actually changed, otherwise a busy instance rebuilds the map constantly and
+    // drags the whole UI down.
+    const sig = this._signature();
+    if (sig === this._sig) return;
+    this._sig = sig;
     this._render();
+  }
+
+  _signature() {
+    const hass = this._hass;
+    if (!hass) return "";
+    const wanted = this._config?.entity ? [this._config.entity] : null;
+    let sig = "";
+    for (const [id, st] of Object.entries(hass.states)) {
+      if (!id.startsWith("binary_sensor.")) continue;
+      const a = st.attributes || {};
+      if (a.monitored_latitude == null || !Array.isArray(a.drones)) continue;
+      if (wanted && !wanted.includes(id)) continue;
+      sig += `${id}:${a.monitored_latitude},${a.monitored_longitude},${a.radius_m}:${a.total_active_in_poland}:${a.stream_connected};`;
+      for (const d of a.drones) sig += `${d.id}@${d.latitude},${d.longitude}#${d.status}/${d.radius_m};`;
+    }
+    return sig;
   }
 
   getCardSize() {
@@ -158,9 +180,21 @@ class DroneTowerMapCard extends HTMLElement {
     L.tileLayer(TILE_URL, { maxZoom: 19, attribution: TILE_ATTR }).addTo(this._map);
     this._areaLayer = L.layerGroup().addTo(this._map);
     this._droneLayer = L.layerGroup().addTo(this._map);
-    // Leaflet needs a size recalculation once it becomes visible in the card.
+    // The card is often laid out (or made visible) after the map is created, which
+    // leaves Leaflet with a stale 0×0 size — a ResizeObserver keeps it in sync.
     setTimeout(() => this._map && this._map.invalidateSize(), 200);
+    if (typeof ResizeObserver !== "undefined") {
+      this._ro = new ResizeObserver(() => this._map && this._map.invalidateSize());
+      this._ro.observe(this._mapEl);
+    }
     this._draw(areas);
+  }
+
+  disconnectedCallback() {
+    if (this._ro) {
+      this._ro.disconnect();
+      this._ro = null;
+    }
   }
 
   _draw(areas) {
