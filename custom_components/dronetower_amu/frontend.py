@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from homeassistant.components.frontend import DATA_EXTRA_MODULE_URL, add_extra_js_url
+from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
@@ -37,22 +37,17 @@ async def async_register_frontend(hass: HomeAssistant) -> None:
         return
 
     try:
-        if "http" not in hass.config.components:
-            await async_setup_component(hass, "http", {})
+        # Both must be up before we can serve a static path and inject a JS module;
+        # they almost always are, so these are no-ops that just guarantee ordering.
+        for component in ("http", "frontend"):
+            if component not in hass.config.components:
+                await async_setup_component(hass, component, {})
 
         await hass.http.async_register_static_paths(
             [StaticPathConfig(URL_BASE, str(frontend_dir), cache_headers=False)]
         )
-
-        if DATA_EXTRA_MODULE_URL in hass.data:
-            for name in cards:
-                add_extra_js_url(hass, f"{URL_BASE}/{name}")
-        else:
-            _LOGGER.debug(
-                "Frontend module loader not ready; cards are served under %s but were "
-                "not auto-injected. Add them under Settings → Dashboards → Resources.",
-                URL_BASE,
-            )
+        for name in cards:
+            add_extra_js_url(hass, f"{URL_BASE}/{name}")
     except Exception:  # noqa: BLE001 - the cards are optional; never block setup
         _LOGGER.warning("Could not register the DroneTower Lovelace cards", exc_info=True)
         return
