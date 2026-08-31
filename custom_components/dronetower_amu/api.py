@@ -12,7 +12,8 @@ from typing import Any
 import aiohttp
 
 from .const import (
-    API_BASE,
+    AUTH_ENDPOINT,
+    CHECKINS_ENDPOINT,
     CONTENT_TYPE,
     STOMP_PROTOCOLS,
     TOPIC_ACTIVE_CHECKINS,
@@ -30,6 +31,14 @@ _UNESCAPE = (("\\r", "\r"), ("\\n", "\n"), ("\\c", ":"), ("\\\\", "\\"))
 
 class DroneTowerError(Exception):
     """Raised when the DroneTower backend cannot be reached or refuses us."""
+
+
+class DroneTowerAuthError(DroneTowerError):
+    """Raised when the backend rejects our credentials or access token.
+
+    Kept distinct from the base error so the coordinator can ask Home Assistant to
+    re-prompt for a password (reauth) instead of quietly retrying forever.
+    """
 
 
 def _unescape(value: str) -> str:
@@ -57,31 +66,104 @@ def _parse_frame(raw: str) -> tuple[str, dict[str, str], str] | None:
 class DroneTowerClient:
     """Talks to the DroneTower backend the same way the mobile app does."""
 
-    def __init__(self, session: aiohttp.ClientSession) -> None:
+    def __init__(
+        self,
+        session: aiohttp.ClientSession,
+        email: str | None = None,
+        password: str | None = None,
+    ) -> None:
         self._session = session
+        self._email = email
+        self._password = password
+        self._token: str | None = None
+        # Serialises logins so a burst of 401s triggers one refresh, not a stampede.
+        self._login_lock = asyncio.Lock()
+
+    @property
+    def has_credentials(self) -> bool:
+        return bool(self._email and self._password)
+
+    def _headers(self) -> dict[str, str]:
+        headers = {"content-type": CONTENT_TYPE}
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
+        return headers
+
+    async def async_login(self) -> None:
+        """Exchange email + password for a bearer token.
+
+        Raises DroneTowerAuthError when the backend refuses the credentials (or none
+        are configured), so the caller can start a reauth flow rather than retry.
+        """
+        if not self.has_credentials:
+            raise DroneTowerAuthError("No DroneTower credentials configured")
+
+        async with self._login_lock:
+            try:
+                async with self._session.post(
+                    AUTH_ENDPOINT,
+                    json={"email": self._email, "password": self._password},
+                    headers={"content-type": CONTENT_TYPE, "accept": CONTENT_TYPE},
+                    timeout=aiohttp.ClientTimeout(total=30),
+                ) as response:
+                    if response.status in (401, 403):
+                        raise DroneTowerAuthError(
+                            "DroneTower rejected the email or password"
+                        )
+                    if response.status == 429:
+                        raise DroneTowerError("Rate limited by the DroneTower backend")
+                    response.raise_for_status()
+                    payload = await response.json(content_type=None)
+            except TimeoutError as err:
+                raise DroneTowerError("Timeout logging in to DroneTower") from err
+            except aiohttp.ClientError as err:
+                raise DroneTowerError(f"DroneTower login failed: {err}") from err
+
+            token = payload.get("accessToken") if isinstance(payload, dict) else None
+            if not token:
+                raise DroneTowerError("DroneTower login returned no access token")
+            self._token = token
 
     async def async_get_checkins(self) -> list[dict[str, Any]]:
-        """Fetch the nationwide snapshot of active check-ins."""
-        try:
-            async with self._session.get(
-                f"{API_BASE}/checkins",
-                headers={"content-type": CONTENT_TYPE},
-                timeout=aiohttp.ClientTimeout(total=30),
-            ) as response:
-                if response.status == 429:
-                    raise DroneTowerError("Rate limited by the DroneTower backend")
-                response.raise_for_status()
-                # The response advertises the vendor media type, not application/json.
-                payload = await response.json(content_type=None)
-        except TimeoutError as err:
-            raise DroneTowerError("Timeout talking to DroneTower") from err
-        except aiohttp.ClientError as err:
-            raise DroneTowerError(f"DroneTower request failed: {err}") from err
+        """Fetch the nationwide snapshot of active check-ins.
 
-        if not isinstance(payload, dict):
-            raise DroneTowerError("Unexpected response shape from /api/checkins")
+        Logs in on first use, and re-logs in once if the token has expired.
+        """
+        if self._token is None:
+            await self.async_login()
 
-        return [c for c in payload.get("checkins") or [] if isinstance(c, dict)]
+        # Two passes at most: the second only after a fresh login on a 401.
+        for attempt in range(2):
+            try:
+                async with self._session.get(
+                    CHECKINS_ENDPOINT,
+                    headers=self._headers(),
+                    timeout=aiohttp.ClientTimeout(total=30),
+                ) as response:
+                    if response.status in (401, 403):
+                        if attempt == 0:
+                            self._token = None
+                            await self.async_login()
+                            continue
+                        raise DroneTowerAuthError(
+                            "DroneTower rejected the access token"
+                        )
+                    if response.status == 429:
+                        raise DroneTowerError("Rate limited by the DroneTower backend")
+                    response.raise_for_status()
+                    # The response advertises the vendor media type, not JSON.
+                    payload = await response.json(content_type=None)
+            except TimeoutError as err:
+                raise DroneTowerError("Timeout talking to DroneTower") from err
+            except aiohttp.ClientError as err:
+                raise DroneTowerError(f"DroneTower request failed: {err}") from err
+
+            if not isinstance(payload, dict):
+                raise DroneTowerError("Unexpected response shape from /api/checkins")
+
+            return [c for c in payload.get("checkins") or [] if isinstance(c, dict)]
+
+        raise DroneTowerAuthError("DroneTower rejected the access token")
 
     async def async_run_stream(
         self,
@@ -92,6 +174,10 @@ class DroneTowerClient:
 
         Returns normally only if the server closes the socket; every other failure
         raises DroneTowerError so the caller can back off and retry.
+
+        The broadcast feed connects anonymously, exactly as the app does: it sets no
+        STOMP-level credentials and leans on the login session cookie, which rides
+        along on this shared session's handshake if the broker ever starts asking.
         """
         try:
             async with self._session.ws_connect(

@@ -10,11 +10,12 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 from homeassistant.util.location import distance as geo_distance
 
-from .api import DroneTowerClient, DroneTowerError
+from .api import DroneTowerAuthError, DroneTowerClient, DroneTowerError
 from .history import FlightHistory
 from .const import (
     CONF_INCLUDE_OVERDUE,
@@ -95,6 +96,8 @@ class DroneTowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         try:
             checkins = await self.client.async_get_checkins()
+        except DroneTowerAuthError as err:
+            raise ConfigEntryAuthFailed(str(err)) from err
         except DroneTowerError as err:
             raise UpdateFailed(str(err)) from err
 

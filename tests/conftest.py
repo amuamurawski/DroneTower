@@ -72,7 +72,10 @@ def make_entry(**option_overrides) -> MockConfigEntry:
         **option_overrides,
     }
     return MockConfigEntry(
-        domain=DOMAIN, title="Dom", data={"name": "Dom"}, options=options
+        domain=DOMAIN,
+        title="Dom",
+        data={"name": "Dom", "email": "pilot@example.com", "password": "secret"},
+        options=options,
     )
 
 

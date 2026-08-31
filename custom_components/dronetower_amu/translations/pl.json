@@ -3,17 +3,31 @@
     "step": {
       "user": {
         "title": "Monitorowanie dronów w okolicy",
-        "description": "Wskaż punkt i promień, w którym chcesz wiedzieć o zgłoszonych lotach dronów. Dane pochodzą z systemu PANSA DroneTower i nie wymagają konta.",
+        "description": "Wskaż punkt i promień, w którym chcesz wiedzieć o zgłoszonych lotach dronów. Dane pochodzą z systemu PANSA DroneTower. Od sierpnia 2026 API wymaga logowania — podaj e-mail i hasło konta DroneTower/PansaUTM, tego samego, którego używasz w aplikacji.",
         "data": {
           "name": "Nazwa",
+          "email": "E-mail konta DroneTower",
+          "password": "Hasło",
           "location": "Monitorowany obszar",
           "include_planned": "Uwzględniaj loty zgłoszone, jeszcze nierozpoczęte",
           "include_overdue": "Uwzględniaj zgłoszenia po czasie (zwykle niezamknięte przez pilota)"
         }
+      },
+      "reauth_confirm": {
+        "title": "Zaloguj się ponownie do DroneTower",
+        "description": "PANSA odrzuciła zapisane dane logowania. Podaj e-mail i hasło konta DroneTower/PansaUTM ponownie.",
+        "data": {
+          "email": "E-mail konta DroneTower",
+          "password": "Hasło"
+        }
       }
     },
     "error": {
-      "cannot_connect": "Nie udało się połączyć z serwerem PANSA DroneTower."
+      "cannot_connect": "Nie udało się połączyć z serwerem PANSA DroneTower.",
+      "invalid_auth": "Nieprawidłowy e-mail lub hasło."
+    },
+    "abort": {
+      "reauth_successful": "Zalogowano ponownie."
     }
   },
   "options": {

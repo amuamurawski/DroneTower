@@ -3,17 +3,31 @@
     "step": {
       "user": {
         "title": "Drone monitoring nearby",
-        "description": "Pick the point and radius where you want to know about registered drone flights. Data comes from the PANSA DroneTower system and needs no account.",
+        "description": "Pick the point and radius where you want to know about registered drone flights. Data comes from the PANSA DroneTower system. Since August 2026 the API requires a login — enter the email and password of the DroneTower/PansaUTM account you use in the app.",
         "data": {
           "name": "Name",
+          "email": "DroneTower account email",
+          "password": "Password",
           "location": "Monitored area",
           "include_planned": "Include registered flights that have not started yet",
           "include_overdue": "Include overdue check-ins (usually left open by the pilot)"
         }
+      },
+      "reauth_confirm": {
+        "title": "Sign in to DroneTower again",
+        "description": "PANSA rejected the stored credentials. Enter the DroneTower/PansaUTM account email and password again.",
+        "data": {
+          "email": "DroneTower account email",
+          "password": "Password"
+        }
       }
     },
     "error": {
-      "cannot_connect": "Could not reach the PANSA DroneTower backend."
+      "cannot_connect": "Could not reach the PANSA DroneTower backend.",
+      "invalid_auth": "Invalid email or password."
+    },
+    "abort": {
+      "reauth_successful": "Signed in again."
     }
   },
   "options": {

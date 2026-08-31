@@ -7,7 +7,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
+from homeassistant.const import CONF_EMAIL, CONF_PASSWORD, Platform
 from homeassistant.core import (
     HomeAssistant,
     ServiceCall,
@@ -78,7 +78,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: DroneTowerConfigEntry) -
     history = FlightHistory(hass, entry)
     await history.async_load()
 
-    client = DroneTowerClient(async_get_clientsession(hass))
+    client = DroneTowerClient(
+        async_get_clientsession(hass),
+        entry.data.get(CONF_EMAIL),
+        entry.data.get(CONF_PASSWORD),
+    )
     coordinator = DroneTowerCoordinator(hass, entry, client)
     coordinator.history = history
 

@@ -12,12 +12,19 @@ from homeassistant.config_entries import (
     ConfigFlowResult,
     OptionsFlow,
 )
-from homeassistant.const import CONF_LATITUDE, CONF_LOCATION, CONF_LONGITUDE, CONF_NAME
+from homeassistant.const import (
+    CONF_EMAIL,
+    CONF_LATITUDE,
+    CONF_LOCATION,
+    CONF_LONGITUDE,
+    CONF_NAME,
+    CONF_PASSWORD,
+)
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import DroneTowerClient, DroneTowerError
+from .api import DroneTowerAuthError, DroneTowerClient, DroneTowerError
 from .const import (
     CONF_HISTORY_DAYS,
     CONF_INCLUDE_OVERDUE,
@@ -32,6 +39,33 @@ from .const import (
     DEFAULT_STORE_PHONE,
     DOMAIN,
 )
+
+_EMAIL_SELECTOR = selector.TextSelector(
+    selector.TextSelectorConfig(type=selector.TextSelectorType.EMAIL)
+)
+_PASSWORD_SELECTOR = selector.TextSelector(
+    selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+)
+
+
+def _credentials_fields(email_default: str = "") -> dict[Any, Any]:
+    """Email + password — the DroneTower account the app itself signs in with."""
+    return {
+        vol.Required(CONF_EMAIL, default=email_default): _EMAIL_SELECTOR,
+        vol.Required(CONF_PASSWORD): _PASSWORD_SELECTOR,
+    }
+
+
+async def _async_validate_credentials(hass, email: str, password: str) -> str | None:
+    """Try to log in. Returns an error key for the form, or None on success."""
+    client = DroneTowerClient(async_get_clientsession(hass), email, password)
+    try:
+        await client.async_login()
+    except DroneTowerAuthError:
+        return "invalid_auth"
+    except DroneTowerError:
+        return "cannot_connect"
+    return None
 
 
 def _history_fields(history_days: int, store_phone: bool) -> dict[Any, Any]:
@@ -58,11 +92,14 @@ def _location_schema(
     include_overdue: bool,
     include_planned: bool,
     with_name: bool = False,
+    with_credentials: bool = False,
     history: dict[Any, Any] | None = None,
 ) -> vol.Schema:
     fields: dict[Any, Any] = {}
     if with_name:
         fields[vol.Required(CONF_NAME, default=DEFAULT_NAME)] = str
+    if with_credentials:
+        fields.update(_credentials_fields())
     return vol.Schema(
         {
             **fields,
@@ -118,15 +155,19 @@ class DroneTowerConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            client = DroneTowerClient(async_get_clientsession(self.hass))
-            try:
-                await client.async_get_checkins()
-            except DroneTowerError:
-                errors["base"] = "cannot_connect"
+            error = await _async_validate_credentials(
+                self.hass, user_input[CONF_EMAIL], user_input[CONF_PASSWORD]
+            )
+            if error:
+                errors["base"] = error
             else:
                 return self.async_create_entry(
                     title=user_input[CONF_NAME],
-                    data={CONF_NAME: user_input[CONF_NAME]},
+                    data={
+                        CONF_NAME: user_input[CONF_NAME],
+                        CONF_EMAIL: user_input[CONF_EMAIL],
+                        CONF_PASSWORD: user_input[CONF_PASSWORD],
+                    },
                     options=_options_from_input(user_input),
                 )
 
@@ -137,11 +178,49 @@ class DroneTowerConfigFlow(ConfigFlow, domain=DOMAIN):
             DEFAULT_INCLUDE_OVERDUE,
             DEFAULT_INCLUDE_PLANNED,
             with_name=True,
+            with_credentials=True,
         )
 
         return self.async_show_form(
             step_id="user",
             data_schema=self.add_suggested_values_to_schema(schema, user_input or {}),
+            errors=errors,
+        )
+
+    async def async_step_reauth(
+        self, entry_data: dict[str, Any]
+    ) -> ConfigFlowResult:
+        """Kick off reauth when the stored credentials stop working."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
+        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        assert entry is not None
+
+        if user_input is not None:
+            error = await _async_validate_credentials(
+                self.hass, user_input[CONF_EMAIL], user_input[CONF_PASSWORD]
+            )
+            if error:
+                errors["base"] = error
+            else:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data={
+                        **entry.data,
+                        CONF_EMAIL: user_input[CONF_EMAIL],
+                        CONF_PASSWORD: user_input[CONF_PASSWORD],
+                    },
+                )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema(
+                _credentials_fields(entry.data.get(CONF_EMAIL, ""))
+            ),
             errors=errors,
         )
 
