@@ -1,0 +1,62 @@
+blueprint:
+  name: "DroneTower — powiadom o dronie w okolicy"
+  description: >
+    Uruchamia wybraną akcję (np. powiadomienie), gdy w monitorowanym obszarze pojawi
+    się zgłoszony lot drona. Opcjonalnie filtruje po odległości i pułapie.
+
+
+    Dostępne zmienne w akcjach: drone_id, status, distance_m, height_m,
+    area_radius_m, latitude, longitude, start, end.
+  domain: automation
+  source_url: https://github.com/amuamurawski/DroneTower/blob/main/custom_components/dronetower_amu/blueprints/automation/dronetower_amu/notify_drone_nearby.yaml
+  input:
+    max_distance:
+      name: Maksymalna odległość (m)
+      description: Powiadom tylko, gdy dron jest bliżej niż tyle metrów od obszaru. 0 = bez limitu.
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 100000
+          step: 100
+          unit_of_measurement: m
+          mode: box
+    min_height:
+      name: Minimalna wysokość (m)
+      description: Powiadom tylko o lotach z pułapem co najmniej tyle metrów.
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 5000
+          step: 10
+          unit_of_measurement: m
+          mode: box
+    actions:
+      name: Akcje
+      description: Co zrobić po wykryciu (np. wyślij powiadomienie na telefon).
+      selector:
+        action: {}
+variables:
+  max_distance: !input max_distance
+  min_height: !input min_height
+  drone_id: "{{ trigger.event.data.id }}"
+  status: "{{ trigger.event.data.status }}"
+  distance_m: "{{ trigger.event.data.distance_to_area_m }}"
+  height_m: "{{ trigger.event.data.max_height_m }}"
+  area_radius_m: "{{ trigger.event.data.radius_m }}"
+  latitude: "{{ trigger.event.data.latitude }}"
+  longitude: "{{ trigger.event.data.longitude }}"
+  start: "{{ trigger.event.data.start }}"
+  end: "{{ trigger.event.data.end }}"
+trigger:
+  - platform: event
+    event_type: dronetower_amu_drone_detected
+condition:
+  - condition: template
+    value_template: >
+      {{ (max_distance | int(0) == 0 or (distance_m | int(999999)) <= (max_distance | int(0)))
+         and ((height_m | int(0)) >= (min_height | int(0))) }}
+action: !input actions
+mode: parallel
+max: 25

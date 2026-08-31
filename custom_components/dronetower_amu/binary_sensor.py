@@ -46,4 +46,9 @@ class DroneNearbyBinarySensor(DroneTowerEntity, BinarySensorEntity):
             ATTR_DRONES: data["nearby"][:MAX_ATTRIBUTE_ENTRIES],
             ATTR_TOTAL_ACTIVE: data["total_active"],
             "stream_connected": self.coordinator.stream_connected,
+            # The monitored point and radius let the map card draw the watched area
+            # without a second entity to read.
+            "monitored_latitude": self.coordinator.latitude,
+            "monitored_longitude": self.coordinator.longitude,
+            "radius_m": self.coordinator.radius,
         }

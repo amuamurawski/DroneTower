@@ -58,6 +58,16 @@ async def test_setup_with_no_checkins(hass, config_entry, mock_client):
     assert nearest_state(hass, config_entry).state == "unknown"
 
 
+async def test_monitored_area_exposed_for_map_card(hass, config_entry, mock_client):
+    """The map card reads the watched point and radius off the binary sensor."""
+    await setup_entry(hass, config_entry)
+
+    attrs = nearby_state(hass, config_entry).attributes
+    assert attrs["monitored_latitude"] == 52.0
+    assert attrs["monitored_longitude"] == 21.0
+    assert attrs["radius_m"] == 5000
+
+
 async def test_nearby_checkin_from_snapshot(hass, config_entry, mock_client):
     mock_client.async_get_checkins.return_value = [make_checkin()]
     await setup_entry(hass, config_entry)
