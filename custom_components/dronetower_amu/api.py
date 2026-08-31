@@ -11,6 +11,11 @@ from collections.abc import Callable
 from typing import Any
 
 import aiohttp
+from homeassistant.util.ssl import (
+    SSL_ALPN_HTTP11_HTTP2,
+    SSLCipherList,
+    client_context,
+)
 
 from .const import (
     CHECKINS_ENDPOINT,
@@ -85,6 +90,12 @@ class DroneTowerClient:
         # Serialises token requests so a burst of 401s triggers one refresh, not a
         # stampede.
         self._login_lock = asyncio.Lock()
+        # PANSA's SSO edge blocks clients whose TLS handshake carries the platform's
+        # *default* cipher list, which varies by OpenSSL build — Home Assistant's
+        # Linux build is refused (403) while curl and browsers pass. Pinning an
+        # explicit, browser-grade cipher list and advertising HTTP/2 in ALPN makes
+        # the handshake identical everywhere and acceptable to that edge.
+        self._ssl = client_context(SSLCipherList.INTERMEDIATE, SSL_ALPN_HTTP11_HTTP2)
 
     @property
     def has_credentials(self) -> bool:
@@ -142,6 +153,7 @@ class DroneTowerClient:
                 async with self._session.post(
                     KEYCLOAK_TOKEN_ENDPOINT,
                     data=data,
+                    ssl=self._ssl,
                     timeout=aiohttp.ClientTimeout(total=30),
                 ) as response:
                     # Keycloak answers a bad password or a dead refresh token with an
@@ -196,6 +208,7 @@ class DroneTowerClient:
                 async with self._session.get(
                     CHECKINS_ENDPOINT,
                     headers=self._headers(),
+                    ssl=self._ssl,
                     timeout=aiohttp.ClientTimeout(total=30),
                 ) as response:
                     if response.status in (401, 403):
@@ -240,6 +253,7 @@ class DroneTowerClient:
             async with self._session.ws_connect(
                 WS_URL,
                 protocols=STOMP_PROTOCOLS,
+                ssl=self._ssl,
                 timeout=aiohttp.ClientTimeout(total=30),
             ) as websocket:
                 await self._run_session(websocket, on_event, on_connected)
