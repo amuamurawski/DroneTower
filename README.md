@@ -6,8 +6,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Integracja pokazująca **zgłoszone loty dronów** wokół wskazanego punktu, na podstawie
-publicznego API systemu DroneTower Polskiej Agencji Żeglugi Powietrznej.
-Nie wymaga konta ani żadnych poświadczeń.
+API systemu DroneTower Polskiej Agencji Żeglugi Powietrznej.
+
+> **Od sierpnia 2026 API PANSA wymaga logowania** (zmiana KSID). Integracja loguje się
+> kontem **DroneTower / PansaUTM** przez PANSA SSO (Keycloak) — podajesz e-mail i hasło
+> w kreatorze. To samo konto, którego używasz w aplikacji mobilnej.
 
 Repozytorium zawiera też [dokumentację inżynierii wstecznej](docs/API.md) aplikacji
 mobilnej PANSA, z której odtworzono to API.
@@ -64,8 +67,9 @@ w swojej instancji i zrestartuj Home Assistanta.
 
 ## Konfiguracja
 
-W kreatorze wskazujesz punkt i promień na mapie (domyślnie lokalizacja domu i 5 km)
-oraz decydujesz, czy liczyć:
+W kreatorze podajesz **e-mail i hasło konta DroneTower / PansaUTM** (od sierpnia 2026
+API wymaga logowania), a następnie wskazujesz punkt i promień na mapie (domyślnie
+lokalizacja domu i 5 km) oraz decydujesz, czy liczyć:
 
 - **loty zgłoszone, jeszcze nierozpoczęte** (`CREATED`) — domyślnie tak, bo to
   ostrzeżenie z wyprzedzeniem;
@@ -93,6 +97,14 @@ Bez konfiguracji karta sama znajduje monitorowane obszary integracji. Gdyby po
 instalacji nie doładowała się automatycznie, dodaj zasób ręcznie w **Ustawienia →
 Dashboardy → Zasoby**: URL `/dronetower_amu_static/dronetower-map-card.js`, typ
 **Moduł JavaScript** (i odśwież przeglądarkę Ctrl+Shift+R).
+
+Jest też prostsza **karta listy** bez mapy — kafelki statystyk (w zasięgu / w Polsce)
+i lista lotów ze statusem, pułapem, oknem czasowym i kolorowym wskaźnikiem odległości:
+
+```yaml
+type: custom:dronetower-surveillance-card
+title: Drony w okolicy   # opcjonalne
+```
 
 ## Zdarzenia do automatyzacji
 
@@ -239,10 +251,10 @@ samodzielnie.
 
 ## Zastrzeżenia
 
-Projekt nieoficjalny, niezwiązany z PANSA. Adresy i model danych odtworzono z wersji
-1.1.12 aplikacji DroneTower i mogą się zmienić bez ostrzeżenia. Dane służą wyłącznie
-do orientacji sytuacyjnej — **nie są źródłem informacji lotniczej** i nie zastępują
-oficjalnych kanałów PANSA.
+Projekt nieoficjalny, niezwiązany z PANSA. Adresy, model danych i sposób logowania
+odtworzono z aplikacji DroneTower (wersje 1.1.12 i 1.2.0) i mogą się zmienić bez
+ostrzeżenia. Dane służą wyłącznie do orientacji sytuacyjnej — **nie są źródłem
+informacji lotniczej** i nie zastępują oficjalnych kanałów PANSA.
 
 ## Licencja
 
