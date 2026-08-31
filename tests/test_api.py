@@ -15,56 +15,96 @@ from custom_components.dronetower_amu.api import (
     _parse_frame,
     _unescape,
 )
-from custom_components.dronetower_amu.const import (
-    CHECKINS_ENDPOINT,
-    KEYCLOAK_TOKEN_ENDPOINT,
-)
+from custom_components.dronetower_amu.const import CHECKINS_ENDPOINT
 
 NUL = "\x00"
 
-TOKEN_RESPONSE = {
-    "access_token": "tok",
-    "expires_in": 300,
-    "refresh_token": "rt",
-}
+
+class _FakeCurlResponse:
+    """Stand-in for a curl_cffi response."""
+
+    def __init__(self, status_code: int, json_data: dict | None = None) -> None:
+        self.status_code = status_code
+        self._json = json_data or {}
+
+    def json(self) -> dict:
+        return self._json
+
+
+class _FakeCurlSession:
+    """Patches api.CurlAsyncSession: records posts, returns queued responses."""
+
+    def __init__(self) -> None:
+        self.posts: list[dict] = []
+        self._queue: list[_FakeCurlResponse] = []
+
+    def queue(self, status: int, json_data: dict | None = None) -> "_FakeCurlSession":
+        self._queue.append(_FakeCurlResponse(status, json_data))
+        return self
+
+    async def __aenter__(self) -> "_FakeCurlSession":
+        return self
+
+    async def __aexit__(self, *_exc) -> bool:
+        return False
+
+    async def post(self, url, **kwargs):
+        self.posts.append(kwargs)
+        return self._queue.pop(0)
+
+
+def _patch_curl(fake: _FakeCurlSession):
+    from unittest.mock import patch
+
+    return patch(
+        "custom_components.dronetower_amu.api.CurlAsyncSession", return_value=fake
+    )
 
 
 async def test_login_then_checkins_sends_bearer_token(hass, aioclient_mock):
-    aioclient_mock.post(KEYCLOAK_TOKEN_ENDPOINT, json=TOKEN_RESPONSE)
+    fake = _FakeCurlSession().queue(
+        200, {"access_token": "tok", "expires_in": 300, "refresh_token": "rt"}
+    )
     aioclient_mock.get(
         CHECKINS_ENDPOINT, json={"checkins": [{"id": "a"}, "junk", {"id": "b"}]}
     )
 
-    client = DroneTowerClient(async_get_clientsession(hass), "pilot@example.com", "pw")
-    checkins = await client.async_get_checkins()
+    with _patch_curl(fake):
+        client = DroneTowerClient(
+            async_get_clientsession(hass), "pilot@example.com", "pw"
+        )
+        checkins = await client.async_get_checkins()
 
     assert [c["id"] for c in checkins] == ["a", "b"]
-    # The password grant carries the credentials, not the checkins request.
-    post_call = next(c for c in aioclient_mock.mock_calls if c[0].upper() == "POST")
-    assert post_call[2]["grant_type"] == "password"
-    assert post_call[2]["username"] == "pilot@example.com"
+    # The password grant (via curl_cffi) carries the credentials; the checkins request
+    # carries the bearer token.
+    assert fake.posts[0]["data"]["grant_type"] == "password"
+    assert fake.posts[0]["data"]["username"] == "pilot@example.com"
+    assert fake.posts[0]["impersonate"] == "chrome"
     get_call = next(c for c in aioclient_mock.mock_calls if c[0].upper() == "GET")
     assert get_call[3]["Authorization"] == "Bearer tok"
 
 
-async def test_login_rejects_bad_credentials(hass, aioclient_mock):
-    aioclient_mock.post(KEYCLOAK_TOKEN_ENDPOINT, status=401)
+async def test_login_rejects_bad_credentials(hass):
+    fake = _FakeCurlSession().queue(401, {"error": "invalid_grant"})
 
-    client = DroneTowerClient(async_get_clientsession(hass), "pilot@example.com", "bad")
-    with pytest.raises(DroneTowerAuthError):
-        await client.async_login()
+    with _patch_curl(fake):
+        client = DroneTowerClient(
+            async_get_clientsession(hass), "pilot@example.com", "bad"
+        )
+        with pytest.raises(DroneTowerAuthError):
+            await client.async_login()
 
 
-async def test_checkins_without_credentials_raises_auth(hass, aioclient_mock):
+async def test_checkins_without_credentials_raises_auth(hass):
     client = DroneTowerClient(async_get_clientsession(hass))
     with pytest.raises(DroneTowerAuthError):
         await client.async_get_checkins()
 
 
 async def test_expired_token_is_refreshed_on_401(hass, aioclient_mock):
-    aioclient_mock.post(
-        KEYCLOAK_TOKEN_ENDPOINT,
-        json={"access_token": "fresh", "expires_in": 300, "refresh_token": "rt2"},
+    fake = _FakeCurlSession().queue(
+        200, {"access_token": "fresh", "expires_in": 300, "refresh_token": "rt2"}
     )
 
     # First GET is rejected as if the cached token had expired; the retry succeeds.
@@ -80,18 +120,19 @@ async def test_expired_token_is_refreshed_on_401(hass, aioclient_mock):
 
     aioclient_mock.get(CHECKINS_ENDPOINT, side_effect=flip)
 
-    client = DroneTowerClient(async_get_clientsession(hass), "pilot@example.com", "pw")
-    client._token = "stale"
-    client._refresh_token = "rt"
-
-    checkins = await client.async_get_checkins()
+    with _patch_curl(fake):
+        client = DroneTowerClient(
+            async_get_clientsession(hass), "pilot@example.com", "pw"
+        )
+        client._token = "stale"
+        client._refresh_token = "rt"
+        checkins = await client.async_get_checkins()
 
     assert [c["id"] for c in checkins] == ["z"]
     assert calls["n"] == 2
     # Exactly one token exchange, and it used the refresh grant.
-    posts = [c for c in aioclient_mock.mock_calls if c[0].upper() == "POST"]
-    assert len(posts) == 1
-    assert posts[0][2]["grant_type"] == "refresh_token"
+    assert len(fake.posts) == 1
+    assert fake.posts[0]["data"]["grant_type"] == "refresh_token"
 
 
 def test_parse_connected_frame():

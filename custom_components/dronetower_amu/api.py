@@ -11,11 +11,18 @@ from collections.abc import Callable
 from typing import Any
 
 import aiohttp
+from curl_cffi.requests import AsyncSession as CurlAsyncSession
 from homeassistant.util.ssl import (
     SSL_ALPN_HTTP11_HTTP2,
     SSLCipherList,
     client_context,
 )
+
+# PANSA's SSO edge fingerprints the TLS handshake (JA3/JA4) and refuses anything that
+# is not a real browser — pinning cipher suites is not enough. curl_cffi replays an
+# actual Chrome ClientHello, which the edge accepts (the app's own login runs in a
+# Chromium WebView). Only the SSO token exchange needs this; the BFF does not.
+_IMPERSONATE = "chrome"
 
 from .const import (
     CHECKINS_ENDPOINT,
@@ -145,30 +152,36 @@ class DroneTowerClient:
             await self.async_login()
 
     async def _token_request(self, data: dict[str, str]) -> None:
-        """Run one Keycloak token exchange and store the result."""
+        """Run one Keycloak token exchange (as Chrome) and store the result."""
         async with self._login_lock:
             try:
-                # A dict body makes aiohttp send application/x-www-form-urlencoded and
-                # set that header itself; do not set it by hand as well.
-                async with self._session.post(
-                    KEYCLOAK_TOKEN_ENDPOINT,
-                    data=data,
-                    ssl=self._ssl,
-                    timeout=aiohttp.ClientTimeout(total=30),
-                ) as response:
-                    # Keycloak answers a bad password or a dead refresh token with an
-                    # invalid_grant at 400/401.
-                    if response.status in (400, 401):
-                        raise DroneTowerAuthError("DroneTower rejected the credentials")
-                    if response.status == 429:
-                        raise DroneTowerError("Rate limited by the DroneTower backend")
-                    response.raise_for_status()
-                    payload = await response.json(content_type=None)
-            except TimeoutError as err:
-                raise DroneTowerError("Timeout authenticating with DroneTower") from err
-            except aiohttp.ClientError as err:
+                async with CurlAsyncSession() as session:
+                    response = await session.post(
+                        KEYCLOAK_TOKEN_ENDPOINT,
+                        data=data,
+                        impersonate=_IMPERSONATE,
+                        timeout=30,
+                    )
+            except Exception as err:  # noqa: BLE001 - curl_cffi's own error hierarchy
                 raise DroneTowerError(
                     f"DroneTower authentication failed: {err}"
+                ) from err
+
+            status = response.status_code
+            # Keycloak answers a bad password or a dead refresh token with an
+            # invalid_grant at 400/401.
+            if status in (400, 401):
+                raise DroneTowerAuthError("DroneTower rejected the credentials")
+            if status == 429:
+                raise DroneTowerError("Rate limited by the DroneTower backend")
+            if status >= 400:
+                raise DroneTowerError(f"DroneTower authentication failed: HTTP {status}")
+
+            try:
+                payload = response.json()
+            except ValueError as err:
+                raise DroneTowerError(
+                    "DroneTower returned an unreadable token response"
                 ) from err
 
             token = payload.get("access_token") if isinstance(payload, dict) else None
