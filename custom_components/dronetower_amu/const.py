@@ -9,10 +9,17 @@ DOMAIN = "dronetower_amu"
 API_BASE = "https://bff-drone-tower.uav.pansa.pl/api"
 WS_URL = "wss://bff-drone-tower.uav.pansa.pl/ws"
 
-# Email + password are exchanged here for a short-lived bearer token, the same way
-# the mobile app logs in. Every other REST call now needs that token.
-AUTH_ENDPOINT = f"{API_BASE}/auth"
 CHECKINS_ENDPOINT = f"{API_BASE}/checkins"
+
+# Login moved to PANSA's Keycloak (realm "utm") in the Aug 2026 KSID update; the old
+# email/password POST to /api/auth is gone. The mobile app signs in here with a
+# resource-owner password grant and puts the resulting JWT on every BFF request.
+KEYCLOAK_TOKEN_ENDPOINT = (
+    "https://sso.uav.pansa.pl/auth/realms/utm/protocol/openid-connect/token"
+)
+KEYCLOAK_CLIENT_ID = "drone-tower-mobile"
+# The access token lives ~5 min; refresh it this many seconds before it expires.
+TOKEN_REFRESH_MARGIN = 30
 
 # The BFF rejects every request without this vendor media type with HTTP 415.
 CONTENT_TYPE = "application/vnd.pansa.bff-drone-tower.v1+json"

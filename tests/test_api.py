@@ -15,13 +15,22 @@ from custom_components.dronetower_amu.api import (
     _parse_frame,
     _unescape,
 )
-from custom_components.dronetower_amu.const import AUTH_ENDPOINT, CHECKINS_ENDPOINT
+from custom_components.dronetower_amu.const import (
+    CHECKINS_ENDPOINT,
+    KEYCLOAK_TOKEN_ENDPOINT,
+)
 
 NUL = "\x00"
 
+TOKEN_RESPONSE = {
+    "access_token": "tok",
+    "expires_in": 300,
+    "refresh_token": "rt",
+}
+
 
 async def test_login_then_checkins_sends_bearer_token(hass, aioclient_mock):
-    aioclient_mock.post(AUTH_ENDPOINT, json={"accessToken": "tok", "ttl": 3600})
+    aioclient_mock.post(KEYCLOAK_TOKEN_ENDPOINT, json=TOKEN_RESPONSE)
     aioclient_mock.get(
         CHECKINS_ENDPOINT, json={"checkins": [{"id": "a"}, "junk", {"id": "b"}]}
     )
@@ -30,12 +39,16 @@ async def test_login_then_checkins_sends_bearer_token(hass, aioclient_mock):
     checkins = await client.async_get_checkins()
 
     assert [c["id"] for c in checkins] == ["a", "b"]
+    # The password grant carries the credentials, not the checkins request.
+    post_call = next(c for c in aioclient_mock.mock_calls if c[0].upper() == "POST")
+    assert post_call[2]["grant_type"] == "password"
+    assert post_call[2]["username"] == "pilot@example.com"
     get_call = next(c for c in aioclient_mock.mock_calls if c[0].upper() == "GET")
     assert get_call[3]["Authorization"] == "Bearer tok"
 
 
 async def test_login_rejects_bad_credentials(hass, aioclient_mock):
-    aioclient_mock.post(AUTH_ENDPOINT, status=401)
+    aioclient_mock.post(KEYCLOAK_TOKEN_ENDPOINT, status=401)
 
     client = DroneTowerClient(async_get_clientsession(hass), "pilot@example.com", "bad")
     with pytest.raises(DroneTowerAuthError):
@@ -48,8 +61,11 @@ async def test_checkins_without_credentials_raises_auth(hass, aioclient_mock):
         await client.async_get_checkins()
 
 
-async def test_expired_token_triggers_one_relogin(hass, aioclient_mock):
-    aioclient_mock.post(AUTH_ENDPOINT, json={"accessToken": "fresh", "ttl": 3600})
+async def test_expired_token_is_refreshed_on_401(hass, aioclient_mock):
+    aioclient_mock.post(
+        KEYCLOAK_TOKEN_ENDPOINT,
+        json={"access_token": "fresh", "expires_in": 300, "refresh_token": "rt2"},
+    )
 
     # First GET is rejected as if the cached token had expired; the retry succeeds.
     calls = {"n": 0}
@@ -66,13 +82,16 @@ async def test_expired_token_triggers_one_relogin(hass, aioclient_mock):
 
     client = DroneTowerClient(async_get_clientsession(hass), "pilot@example.com", "pw")
     client._token = "stale"
+    client._refresh_token = "rt"
 
     checkins = await client.async_get_checkins()
 
     assert [c["id"] for c in checkins] == ["z"]
     assert calls["n"] == 2
-    logins = [c for c in aioclient_mock.mock_calls if c[0].upper() == "POST"]
-    assert len(logins) == 1
+    # Exactly one token exchange, and it used the refresh grant.
+    posts = [c for c in aioclient_mock.mock_calls if c[0].upper() == "POST"]
+    assert len(posts) == 1
+    assert posts[0][2]["grant_type"] == "refresh_token"
 
 
 def test_parse_connected_frame():

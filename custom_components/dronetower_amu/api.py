@@ -6,16 +6,19 @@ import asyncio
 import contextlib
 import json
 import logging
+import time
 from collections.abc import Callable
 from typing import Any
 
 import aiohttp
 
 from .const import (
-    AUTH_ENDPOINT,
     CHECKINS_ENDPOINT,
     CONTENT_TYPE,
+    KEYCLOAK_CLIENT_ID,
+    KEYCLOAK_TOKEN_ENDPOINT,
     STOMP_PROTOCOLS,
+    TOKEN_REFRESH_MARGIN,
     TOPIC_ACTIVE_CHECKINS,
     WS_HEARTBEAT_MS,
     WS_RECEIVE_TIMEOUT,
@@ -76,7 +79,11 @@ class DroneTowerClient:
         self._email = email
         self._password = password
         self._token: str | None = None
-        # Serialises logins so a burst of 401s triggers one refresh, not a stampede.
+        self._refresh_token: str | None = None
+        # Monotonic deadline after which the access token must be renewed.
+        self._token_expiry: float | None = None
+        # Serialises token requests so a burst of 401s triggers one refresh, not a
+        # stampede.
         self._login_lock = asyncio.Lock()
 
     @property
@@ -90,49 +97,99 @@ class DroneTowerClient:
         return headers
 
     async def async_login(self) -> None:
-        """Exchange email + password for a bearer token.
+        """Sign in with the resource-owner password grant against PANSA's Keycloak.
 
-        Raises DroneTowerAuthError when the backend refuses the credentials (or none
-        are configured), so the caller can start a reauth flow rather than retry.
+        Raises DroneTowerAuthError when the credentials are refused (or none are
+        configured), so the caller can start a reauth flow rather than retry.
         """
         if not self.has_credentials:
             raise DroneTowerAuthError("No DroneTower credentials configured")
 
+        await self._token_request(
+            {
+                "grant_type": "password",
+                "client_id": KEYCLOAK_CLIENT_ID,
+                "scope": "openid",
+                "username": self._email or "",
+                "password": self._password or "",
+            }
+        )
+
+    async def _async_refresh(self) -> None:
+        """Renew the access token, falling back to a full login when needed."""
+        if not self._refresh_token:
+            await self.async_login()
+            return
+        try:
+            await self._token_request(
+                {
+                    "grant_type": "refresh_token",
+                    "client_id": KEYCLOAK_CLIENT_ID,
+                    "refresh_token": self._refresh_token,
+                }
+            )
+        except DroneTowerAuthError:
+            # The refresh token has expired too; start over from the password.
+            self._refresh_token = None
+            await self.async_login()
+
+    async def _token_request(self, data: dict[str, str]) -> None:
+        """Run one Keycloak token exchange and store the result."""
         async with self._login_lock:
             try:
                 async with self._session.post(
-                    AUTH_ENDPOINT,
-                    json={"email": self._email, "password": self._password},
-                    headers={"content-type": CONTENT_TYPE, "accept": CONTENT_TYPE},
+                    KEYCLOAK_TOKEN_ENDPOINT,
+                    data=data,
+                    headers={"content-type": "application/x-www-form-urlencoded"},
                     timeout=aiohttp.ClientTimeout(total=30),
                 ) as response:
-                    if response.status in (401, 403):
-                        raise DroneTowerAuthError(
-                            "DroneTower rejected the email or password"
-                        )
+                    # Keycloak answers a bad password or a dead refresh token with an
+                    # invalid_grant at 400/401.
+                    if response.status in (400, 401):
+                        raise DroneTowerAuthError("DroneTower rejected the credentials")
                     if response.status == 429:
                         raise DroneTowerError("Rate limited by the DroneTower backend")
                     response.raise_for_status()
                     payload = await response.json(content_type=None)
             except TimeoutError as err:
-                raise DroneTowerError("Timeout logging in to DroneTower") from err
+                raise DroneTowerError("Timeout authenticating with DroneTower") from err
             except aiohttp.ClientError as err:
-                raise DroneTowerError(f"DroneTower login failed: {err}") from err
+                raise DroneTowerError(
+                    f"DroneTower authentication failed: {err}"
+                ) from err
 
-            token = payload.get("accessToken") if isinstance(payload, dict) else None
+            token = payload.get("access_token") if isinstance(payload, dict) else None
             if not token:
-                raise DroneTowerError("DroneTower login returned no access token")
+                raise DroneTowerError("DroneTower returned no access token")
+
             self._token = token
+            self._refresh_token = payload.get("refresh_token") or self._refresh_token
+            expires_in = payload.get("expires_in")
+            self._token_expiry = (
+                time.monotonic() + expires_in
+                if isinstance(expires_in, (int, float))
+                else None
+            )
+
+    async def _async_ensure_token(self) -> None:
+        """Make sure a usable access token is in hand before a request."""
+        if self._token is None:
+            await self.async_login()
+        elif (
+            self._token_expiry is not None
+            and time.monotonic() >= self._token_expiry - TOKEN_REFRESH_MARGIN
+        ):
+            await self._async_refresh()
 
     async def async_get_checkins(self) -> list[dict[str, Any]]:
         """Fetch the nationwide snapshot of active check-ins.
 
-        Logs in on first use, and re-logs in once if the token has expired.
+        Signs in on first use, refreshes proactively as the token nears expiry, and
+        renews once reactively if the backend still rejects it.
         """
-        if self._token is None:
-            await self.async_login()
+        await self._async_ensure_token()
 
-        # Two passes at most: the second only after a fresh login on a 401.
+        # Two passes at most: the second only after renewing the token on a 401.
         for attempt in range(2):
             try:
                 async with self._session.get(
@@ -142,8 +199,7 @@ class DroneTowerClient:
                 ) as response:
                     if response.status in (401, 403):
                         if attempt == 0:
-                            self._token = None
-                            await self.async_login()
+                            await self._async_refresh()
                             continue
                         raise DroneTowerAuthError(
                             "DroneTower rejected the access token"
