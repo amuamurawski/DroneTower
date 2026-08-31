@@ -1,4 +1,4 @@
-"""Serve and auto-register the DroneTower Lovelace map card.
+"""Serve and auto-register the DroneTower Lovelace cards.
 
 The registration pattern (static path + add_extra_js_url) is adapted from the
 MIT-licensed Dectyr RX-5 integration by Alexandre Thomas
@@ -22,18 +22,18 @@ _LOGGER = logging.getLogger(__name__)
 _FRONTEND_FLAG = f"{DOMAIN}_frontend_registered"
 
 URL_BASE = f"/{DOMAIN}_static"
-CARD_FILENAME = "dronetower-map-card.js"
+CARD_FILES = ("dronetower-map-card.js", "dronetower-surveillance-card.js")
 
 
 async def async_register_frontend(hass: HomeAssistant) -> None:
-    """Serve the frontend bundle and preload the card module (once per HA process)."""
+    """Serve the frontend bundle and preload the card modules (once per HA process)."""
     if hass.data.get(_FRONTEND_FLAG):
         return
 
     frontend_dir = Path(__file__).parent / "frontend"
-    card_path = frontend_dir / CARD_FILENAME
-    if not card_path.is_file():
-        _LOGGER.warning("DroneTower map card not found at %s", card_path)
+    cards = [name for name in CARD_FILES if (frontend_dir / name).is_file()]
+    if not cards:
+        _LOGGER.warning("No DroneTower Lovelace cards found in %s", frontend_dir)
         return
 
     try:
@@ -45,17 +45,17 @@ async def async_register_frontend(hass: HomeAssistant) -> None:
         )
 
         if DATA_EXTRA_MODULE_URL in hass.data:
-            add_extra_js_url(hass, f"{URL_BASE}/{CARD_FILENAME}")
+            for name in cards:
+                add_extra_js_url(hass, f"{URL_BASE}/{name}")
         else:
             _LOGGER.debug(
-                "Frontend module loader not ready; the card is served at %s/%s but was "
-                "not auto-injected. Add it under Settings → Dashboards → Resources.",
+                "Frontend module loader not ready; cards are served under %s but were "
+                "not auto-injected. Add them under Settings → Dashboards → Resources.",
                 URL_BASE,
-                CARD_FILENAME,
             )
-    except Exception:  # noqa: BLE001 - the card is optional; never block setup
-        _LOGGER.warning("Could not register the DroneTower map card", exc_info=True)
+    except Exception:  # noqa: BLE001 - the cards are optional; never block setup
+        _LOGGER.warning("Could not register the DroneTower Lovelace cards", exc_info=True)
         return
 
     hass.data[_FRONTEND_FLAG] = True
-    _LOGGER.info("Registered the DroneTower map card (%s)", CARD_FILENAME)
+    _LOGGER.info("Registered DroneTower Lovelace cards: %s", ", ".join(cards))
