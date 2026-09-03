@@ -46,8 +46,9 @@ Oba źródła się uzupełniają: PANSA mówi „kto się zgłosił", Remote ID 
 
 Atrybuty `binary_sensor` zawierają listę `drones` ze szczegółami każdego zgłoszenia
 (status, odległość, promień strefy, pułap, okno czasowe) oraz monitorowany punkt i
-promień (`monitored_latitude`, `monitored_longitude`, `radius_m`) — z tego korzysta
-[karta mapy](#karta-mapy-dronów).
+promień (`monitored_latitude`, `monitored_longitude`, `radius_m`) — przydatne we
+własnych szablonach i automatyzacjach. Encje `geo_location` pokazują loty na
+standardowej karcie mapy Home Assistanta.
 
 ## Instalacja przez HACS
 
@@ -78,35 +79,12 @@ lokalizacja domu i 5 km) oraz decydujesz, czy liczyć:
 
 Wszystko można później zmienić przez **Opcje**, bez usuwania integracji.
 
-## Karta mapy dronów
+## Drony na mapie
 
-Integracja dostarcza własną kartę Lovelace **`dronetower-map-card`** — mapę Leaflet na
-żywo z monitorowanym obszarem (okrąg promienia), strefami zgłoszonych lotów i
-znacznikami dronów. Kliknięcie drona pokazuje szczegóły: status, pułap, odległość do
-obszaru, promień strefy i okno czasowe. Karta rejestruje się automatycznie przy
-starcie integracji (Leaflet jest dołączony lokalnie, bez CDN), więc zwykle wystarczy
-dodać ją do panelu:
-
-```yaml
-type: custom:dronetower-map-card
-title: Drony w okolicy   # opcjonalne
-height: 400              # opcjonalne, wysokość w px
-```
-
-Bez konfiguracji karta sama znajduje monitorowane obszary integracji. Gdyby po
-instalacji nie doładowała się automatycznie, dodaj zasób ręcznie w **Ustawienia →
-Dashboardy → Zasoby**: URL `/dronetower_amu_static/dronetower-map-card.js`, typ
-**Moduł JavaScript** (i odśwież przeglądarkę Ctrl+Shift+R).
-
-### Karta listy dronów
-
-Jest też prostsza **karta listy** bez mapy — kafelki statystyk (w zasięgu / w Polsce)
-i lista lotów ze statusem, pułapem, oknem czasowym i kolorowym wskaźnikiem odległości:
-
-```yaml
-type: custom:dronetower-surveillance-card
-title: Drony w okolicy   # opcjonalne
-```
+Loty w zasięgu są dostępne jako encje `geo_location`, więc wystarczy standardowa
+karta **Mapa** Home Assistanta z włączonym źródłem `dronetower_amu` — bez
+dodatkowych zasobów Lovelace. (Własne karty Lovelace zostały wycofane w wersji
+1.9.0 — dokładały skrypty do każdego ładowania interfejsu HA.)
 
 ## Zdarzenia do automatyzacji
 

@@ -27,7 +27,6 @@ from .const import (
     SERVICE_PURGE_HISTORY,
 )
 from .coordinator import DroneTowerCoordinator
-from .frontend import async_register_frontend
 from .history import FlightHistory
 
 PLATFORMS: list[Platform] = [
@@ -76,8 +75,6 @@ _PURGE_SCHEMA = vol.Schema(
 
 async def async_setup_entry(hass: HomeAssistant, entry: DroneTowerConfigEntry) -> bool:
     """Set up DroneTower-AMU from a config entry."""
-    await async_register_frontend(hass)
-
     history = FlightHistory(hass, entry)
     await history.async_load()
 
