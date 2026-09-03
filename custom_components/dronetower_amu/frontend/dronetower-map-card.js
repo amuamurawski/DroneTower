@@ -50,43 +50,114 @@ function loadLeaflet() {
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+/** Type guard: entity attributes are untrusted, numbers must actually be numbers. */
+const isFiniteNumber = (v) => typeof v === "number" && Number.isFinite(v);
+
+/** Safe meters formatter — only ever emits a finite number or a dash. */
+const fmtMeters = (v) => (isFiniteNumber(v) ? `${v} m` : "—");
+
 function fmtTime(iso) {
-  if (!iso) return "—";
+  if (typeof iso !== "string" || !iso) return "—";
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? esc(iso) : d.toLocaleString();
+  return Number.isNaN(d.getTime()) ? esc(iso) : esc(d.toLocaleString());
 }
 
 class DroneTowerMapCard extends HTMLElement {
   setConfig(config) {
+    if (config && config.entity != null && typeof config.entity !== "string") {
+      throw new Error("Opcja 'entity' musi być identyfikatorem encji (tekst).");
+    }
     this._config = config || {};
     this._title = this._config.title || "Drony w okolicy";
+    // A config change must invalidate the render cache and rebuild the card,
+    // otherwise the previous signature suppresses the re-render.
+    this._sig = null;
+    this._fitted = false;
+    if (this._built) this._teardown();
+    if (this._hass) this._render();
   }
 
   set hass(hass) {
     this._hass = hass;
     // HA calls this on every state change anywhere; only re-render when *our* data
     // actually changed, otherwise a busy instance rebuilds the map constantly and
-    // drags the whole UI down.
-    const sig = this._signature();
+    // drags the whole UI down. The signature is derived from the exact projection
+    // the render uses, so the two can never drift apart.
+    const proj = this._collect();
+    const sig = JSON.stringify(proj);
     if (sig === this._sig) return;
     this._sig = sig;
-    this._render();
+    this._render(proj);
   }
 
-  _signature() {
+  /**
+   * Single source of truth for entity selection and data projection — used both
+   * for the change signature and for rendering. With an explicit `entity` in the
+   * config only that one state is read (no full hass.states scan); otherwise all
+   * matching binary_sensors are auto-discovered. Drones are de-duplicated by id
+   * across entities, and every untrusted attribute is normalised via type guards.
+   */
+  _collect() {
     const hass = this._hass;
-    if (!hass) return "";
-    const wanted = this._config?.entity ? [this._config.entity] : null;
-    let sig = "";
-    for (const [id, st] of Object.entries(hass.states)) {
-      if (!id.startsWith("binary_sensor.")) continue;
-      const a = st.attributes || {};
-      if (a.monitored_latitude == null || !Array.isArray(a.drones)) continue;
-      if (wanted && !wanted.includes(id)) continue;
-      sig += `${id}:${a.monitored_latitude},${a.monitored_longitude},${a.radius_m}:${a.total_active_in_poland}:${a.stream_connected};`;
-      for (const d of a.drones) sig += `${d.id}@${d.latitude},${d.longitude}#${d.status}/${d.radius_m};`;
+    if (!hass) return { error: null, areas: [] };
+
+    const entity = this._config?.entity;
+    const candidates = [];
+    if (entity) {
+      const st = hass.states[entity];
+      if (!st) return { error: `Nie znaleziono skonfigurowanej encji: ${entity}`, areas: [] };
+      candidates.push([entity, st]);
+    } else {
+      for (const [id, st] of Object.entries(hass.states)) {
+        if (id.startsWith("binary_sensor.")) candidates.push([id, st]);
+      }
     }
-    return sig;
+
+    const areas = [];
+    const seenDroneIds = new Set();
+    for (const [entityId, st] of candidates) {
+      const a = st.attributes || {};
+      const isDroneTower =
+        isFiniteNumber(a.monitored_latitude) &&
+        isFiniteNumber(a.monitored_longitude) &&
+        Array.isArray(a.drones);
+      if (!isDroneTower) {
+        if (entity) {
+          return { error: `Encja ${entityId} nie udostępnia danych DroneTower.`, areas: [] };
+        }
+        continue;
+      }
+      const drones = [];
+      for (const d of a.drones) {
+        if (!d || typeof d !== "object") continue;
+        const id = String(d.id ?? "");
+        if (id) {
+          if (seenDroneIds.has(id)) continue;
+          seenDroneIds.add(id);
+        }
+        drones.push({
+          id,
+          status: typeof d.status === "string" ? d.status : "",
+          latitude: isFiniteNumber(d.latitude) ? d.latitude : null,
+          longitude: isFiniteNumber(d.longitude) ? d.longitude : null,
+          radius_m: isFiniteNumber(d.radius_m) ? d.radius_m : null,
+          max_height_m: isFiniteNumber(d.max_height_m) ? d.max_height_m : null,
+          distance_to_area_m: isFiniteNumber(d.distance_to_area_m) ? d.distance_to_area_m : null,
+          start: typeof d.start === "string" ? d.start : null,
+          end: typeof d.end === "string" ? d.end : null,
+        });
+      }
+      areas.push({
+        entityId,
+        lat: a.monitored_latitude,
+        lon: a.monitored_longitude,
+        radius: isFiniteNumber(a.radius_m) ? a.radius_m : 0,
+        drones,
+        total: isFiniteNumber(a.total_active_in_poland) ? a.total_active_in_poland : null,
+        connected: Boolean(a.stream_connected),
+      });
+    }
+    return { error: null, areas };
   }
 
   getCardSize() {
@@ -100,51 +171,49 @@ class DroneTowerMapCard extends HTMLElement {
     return "400px";
   }
 
-  /** Collect every monitored area this integration exposes. */
-  _areas() {
-    const hass = this._hass;
-    if (!hass) return [];
-    const wanted = this._config?.entity ? [this._config.entity] : null;
-    const areas = [];
-    for (const [entityId, st] of Object.entries(hass.states)) {
-      if (!entityId.startsWith("binary_sensor.")) continue;
-      const a = st.attributes || {};
-      if (a.monitored_latitude == null || !Array.isArray(a.drones)) continue;
-      if (wanted && !wanted.includes(entityId)) continue;
-      areas.push({
-        entityId,
-        lat: a.monitored_latitude,
-        lon: a.monitored_longitude,
-        radius: a.radius_m || 0,
-        drones: a.drones,
-        total: a.total_active_in_poland,
-        connected: a.stream_connected,
-      });
+  _render(proj) {
+    try {
+      if (!this._built) this._build();
+      const { error, areas } = proj || this._collect();
+      this._showError(error);
+
+      // Header stats (drones are already de-duplicated by id in _collect).
+      const nearby = areas.reduce((n, a) => n + a.drones.length, 0);
+      const withTotal = areas.find((a) => a.total != null);
+      const total = withTotal ? withTotal.total : null;
+      const connected = areas.some((a) => a.connected);
+      this._count.textContent = total == null
+        ? `${nearby} w zasięgu`
+        : `${nearby} w zasięgu · ${total} w Polsce`;
+      this._dot.style.background = connected ? "#3ba55d" : "#8a8a8a";
+      this._dot.title = connected ? "Strumień na żywo połączony" : "Strumień rozłączony";
+
+      if (!window.L || !this._map) {
+        loadLeaflet()
+          .then(() => this._initMap(areas))
+          .catch((e) => this._showError(`Nie udało się załadować mapy: ${e.message}`));
+        return;
+      }
+      this._draw(areas);
+    } catch (e) {
+      if (this._errEl && this._errEl.isConnected) {
+        this._showError(`Błąd renderowania karty: ${e.message}`);
+      } else {
+        this.textContent = `Błąd renderowania karty: ${e.message}`;
+        this._built = false;
+      }
     }
-    return areas;
   }
 
-  _render() {
-    if (!this._built) this._build();
-    const areas = this._areas();
-
-    // Header stats.
-    const nearby = areas.reduce((n, a) => n + a.drones.length, 0);
-    const total = areas.length ? areas[0].total : undefined;
-    const connected = areas.some((a) => a.connected);
-    this._count.textContent = total == null
-      ? `${nearby} w zasięgu`
-      : `${nearby} w zasięgu · ${total} w Polsce`;
-    this._dot.style.background = connected ? "#3ba55d" : "#8a8a8a";
-    this._dot.title = connected ? "Strumień na żywo połączony" : "Strumień rozłączony";
-
-    if (!window.L || !this._map) {
-      loadLeaflet().then(() => this._initMap(areas)).catch((e) =>
-        (this._map || (this._mapEl.textContent = `Nie udało się załadować mapy: ${e.message}`))
-      );
-      return;
+  _showError(msg) {
+    if (!this._errEl) return;
+    if (msg) {
+      this._errEl.textContent = msg;
+      this._errEl.style.display = "block";
+    } else {
+      this._errEl.textContent = "";
+      this._errEl.style.display = "none";
     }
-    this._draw(areas);
   }
 
   _build() {
@@ -163,18 +232,44 @@ class DroneTowerMapCard extends HTMLElement {
     this._count.style.cssText = "font-size:.85rem;color:var(--secondary-text-color);";
     header.append(title, this._dot, this._count);
 
+    this._errEl = document.createElement("div");
+    this._errEl.style.cssText =
+      "display:none;padding:0 16px 8px;color:var(--error-color,#e5484d);font-size:.9rem;";
+
     this._mapEl = document.createElement("div");
     const h = this._mapHeight();
     this._mapEl.style.cssText = `width:100%;height:${h || "400px"};border-radius:0 0 var(--ha-card-border-radius,12px) var(--ha-card-border-radius,12px);overflow:hidden;`;
 
-    card.append(header, this._mapEl);
+    card.append(header, this._errEl, this._mapEl);
     this.innerHTML = "";
     this.append(card);
   }
 
+  _teardown() {
+    if (this._ro) {
+      this._ro.disconnect();
+      this._ro = null;
+    }
+    if (this._map) {
+      this._map.remove();
+      this._map = null;
+    }
+    this._areaLayer = null;
+    this._droneLayer = null;
+    this._errEl = null;
+    this._mapEl = null;
+    this._built = false;
+    this.innerHTML = "";
+  }
+
   _initMap(areas) {
     const L = window.L;
-    if (this._map || !this._mapEl.isConnected) return;
+    if (!this._mapEl || !this._mapEl.isConnected) return;
+    if (this._map) {
+      // Another render queued Leaflet loading before init finished — just redraw.
+      this._draw(areas);
+      return;
+    }
     const center = areas[0] ? [areas[0].lat, areas[0].lon] : [52.115, 19.424];
     this._map = L.map(this._mapEl, { zoomControl: true, attributionControl: true }).setView(center, 12);
     L.tileLayer(TILE_URL, { maxZoom: 19, attribution: TILE_ATTR }).addTo(this._map);
@@ -183,11 +278,22 @@ class DroneTowerMapCard extends HTMLElement {
     // The card is often laid out (or made visible) after the map is created, which
     // leaves Leaflet with a stale 0×0 size — a ResizeObserver keeps it in sync.
     setTimeout(() => this._map && this._map.invalidateSize(), 200);
-    if (typeof ResizeObserver !== "undefined") {
-      this._ro = new ResizeObserver(() => this._map && this._map.invalidateSize());
-      this._ro.observe(this._mapEl);
-    }
+    this._observeResize();
     this._draw(areas);
+  }
+
+  _observeResize() {
+    if (this._ro || !this._mapEl || typeof ResizeObserver === "undefined") return;
+    this._ro = new ResizeObserver(() => this._map && this._map.invalidateSize());
+    this._ro.observe(this._mapEl);
+  }
+
+  connectedCallback() {
+    // Re-attach the observer after the card is moved in the DOM (dashboard edits).
+    if (this._map) {
+      this._observeResize();
+      this._map.invalidateSize();
+    }
   }
 
   disconnectedCallback() {
@@ -246,12 +352,14 @@ class DroneTowerMapCard extends HTMLElement {
           iconAnchor: [11, 11],
         });
         const status = STATUS_LABELS[d.status] || d.status || "—";
+        // bindPopup accepts raw HTML — every entity-derived string is escaped at the
+        // point of insertion, numbers only pass through the isFiniteNumber guard.
         const popup = `
-          <strong>Dron ${esc((d.id || "").slice(0, 8))}</strong><br>
+          <strong>Dron ${esc(d.id.slice(0, 8))}</strong><br>
           Status: ${esc(status)}<br>
-          Wysokość maks.: ${d.max_height_m != null ? esc(d.max_height_m) + " m" : "—"}<br>
-          Do obszaru: ${d.distance_to_area_m != null ? esc(d.distance_to_area_m) + " m" : "—"}<br>
-          Promień strefy: ${d.radius_m != null ? esc(d.radius_m) + " m" : "—"}<br>
+          Wysokość maks.: ${fmtMeters(d.max_height_m)}<br>
+          Do obszaru: ${fmtMeters(d.distance_to_area_m)}<br>
+          Promień strefy: ${fmtMeters(d.radius_m)}<br>
           Od: ${fmtTime(d.start)}<br>
           Do: ${fmtTime(d.end)}`;
         L.marker(ll, { icon }).bindPopup(popup).addTo(this._droneLayer);
