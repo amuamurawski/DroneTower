@@ -98,6 +98,8 @@ instalacji nie doładowała się automatycznie, dodaj zasób ręcznie w **Ustawi
 Dashboardy → Zasoby**: URL `/dronetower_amu_static/dronetower-map-card.js`, typ
 **Moduł JavaScript** (i odśwież przeglądarkę Ctrl+Shift+R).
 
+### Karta listy dronów
+
 Jest też prostsza **karta listy** bez mapy — kafelki statystyk (w zasięgu / w Polsce)
 i lista lotów ze statusem, pułapem, oknem czasowym i kolorowym wskaźnikiem odległości:
 

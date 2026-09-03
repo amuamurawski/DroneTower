@@ -1,0 +1,26 @@
+name: Frontend
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint-and-test:
+    name: eslint + node --test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - run: npm install
+
+      - run: npx eslint
+
+      # Jawna gwiazdka: goły argument-katalog nie działa jednakowo na każdej
+      # wersji Node (np. 22.x próbuje załadować katalog jak moduł).
+      - run: node --test tests/frontend/*.test.mjs
